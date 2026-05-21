@@ -1,4 +1,4 @@
-# 📦 Smart Locker — Casiers connectés pilotés par Home Assistant
+# 📦 Smart Locker - Casiers connectés pilotés par Home Assistant
 
 ## Le projet
 
@@ -21,19 +21,19 @@ Le meuble support est une étagère **IKEA Kallax 4×2** (8 casiers), chaque cas
 │                   Raspberry Pi 4                    │
 │              Home Assistant OS                      │
 │                                                     │
-│  ┌─────────────┐  ┌──────────┐  ┌───────────────┐  │
-│  │  ESPHome    │  │  MQTT    │  │  Automations  │  │
-│  │  (firmware) │  │  broker  │  │  Scripts      │  │
-│  └──────┬──────┘  └────┬─────┘  └───────────────┘  │
+│  ┌─────────────┐  ┌──────────┐  ┌───────────────┐   │
+│  │  ESPHome    │  │  MQTT    │  │  Automations  │   │
+│  │  (firmware) │  │  broker  │  │  Scripts      │   │
+│  └──────┬──────┘  └────┬─────┘  └───────────────┘   │
 └─────────┼──────────────┼────────────────────────────┘
-          │ WiFi          │ WiFi
-          ▼               ▼
+          │ WiFi         │ WiFi
+          ▼              ▼
 ┌─────────────────────────────────────────────────────┐
 │           Carte LC-Relay-ESP32-8R-D5                │
 │                                                     │
 │  8 relais (mode impulsionnel)                       │
-│  GPIO libres → reed switches × 8                   │
-│  GPIO libres → anneaux LED NeoPixel × 8            │
+│  GPIO libres → reed switches × 8                    │
+│  GPIO libres → anneaux LED NeoPixel × 8             │
 └──────────────────────┬──────────────────────────────┘
                        │ 12V / signal
           ┌────────────┼────────────┐
@@ -94,9 +94,9 @@ LIBRE  ──(dépôt)──▶  OCCUPÉ  ──(attribution)──▶  EN ATTEN
 | Couleur | État |
 |---|---|
 | 🟢 Vert | Libre |
-| 🔵 Bleu | Occupé — destinataire notifié |
-| 🟠 Orange | Code saisi — ouverture en cours |
-| ⚪ Blanc clignotant | Porte ouverte — récupération en cours |
+| 🔵 Bleu | Occupé - destinataire notifié |
+| 🟠 Orange | Code saisi - ouverture en cours |
+| ⚪ Blanc clignotant | Porte ouverte - récupération en cours |
 | 🔴 Rouge | Erreur / code incorrect |
 
 ### Sécurité
