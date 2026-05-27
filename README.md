@@ -102,3 +102,17 @@ LIBRE  ──(dépôt)──▶  OCCUPÉ  ──(attribution)──▶  EN ATTEN
 ### Sécurité
 
 Le système est conçu pour un usage intérieur en environnement de confiance (réseau local uniquement). Les codes PIN des utilisateurs sont stockés dans des helpers Home Assistant. Aucune exposition sur internet n'est prévue en V1.
+
+---
+
+## Documentation
+
+La documentation technique détaillée est dans le répertoire [`docs/`](docs/index.md) :
+
+- [Serrure solénoïde](docs/hardware/serrure.md) — pilotage relais + reed switch
+- [Alimentation](docs/hardware/alimentation.md) — architecture 230V → 12V/20A
+- [Contrôleur LED WLED Gledopto](docs/hardware/wled-gledopto.md) — 4 voies pour 8 casiers
+- [ESPHome — Carte relais](docs/esphome/carte-relais.md) — config complète LC-Relay-ESP32-8R-D5
+- [ESPHome — Digicode Wiegand 26](docs/esphome/digicode-wiegand.md) — saisie code PIN
+- [Home Assistant — Intégrations](docs/home-assistant/integrations.md) — entités, helpers, automatisations
+- [Backend Python](docs/backend/README.md) — logique métier (à venir)
