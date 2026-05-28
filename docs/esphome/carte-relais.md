@@ -1,6 +1,6 @@
-# ESPHome — Carte relais LC-Relay-ESP32-8R-D5
+# ESPHome - Carte relais LC-Relay-ESP32-8R-D5
 
-## Présentation du matériel
+<img src="../../docs/img/lc-relay-esp32-8r-d5.jpg" width="400"/>
 
 La **LC-Relay-ESP32-8R-D5** est une carte tout-en-un combinant :
 - Un module **ESP32** (WiFi + Bluetooth)
@@ -29,8 +29,14 @@ La **LC-Relay-ESP32-8R-D5** est une carte tout-en-un combinant :
 | Reed switch 7 | GPIO17 | État porte casier 7 |
 | Reed switch 8 | GPIO5 | État porte casier 8 |
 
-> **Note :** Les GPIO 34, 35, 36, 39 sont en **entrée uniquement** sur l'ESP32 (pas de pull-up interne).
-> Ajouter des résistances pull-up externes 10kΩ vers le 3.3V pour ces 4 entrées.
+> **A vérifier** : les GPIO proposés pour les reed switches (GPIO4, 5, 16, 17, 34, 35, 36, 39) sont
+> théoriquement libres sur un ESP32 standard, mais certains peuvent être utilisés par la carte pour
+> d'autres fonctions selon la version du PCB. Vérifier le pinout exact sur le
+> [forum HACF](https://forum.hacf.fr/t/carte-8-relais-avec-esp32-branchement-usb-uart/48181)
+> avant de câbler.
+>
+> GPIO 34, 35, 36 et 39 sont en **entrée uniquement** sur l'ESP32 (pas de pull-up interne).
+> Ajouter une résistance pull-up externe 10kΩ vers le 3,3V pour chacun de ces quatre GPIO.
 
 ## Configuration ESPHome
 
@@ -62,7 +68,7 @@ wifi:
     ssid: "${device_name} Fallback"
     password: !secret fallback_password
 
-# ── Relais (mode impulsionnel) ─────────────────────────────────────────────────
+# Relais
 
 switch:
   - platform: gpio
@@ -113,8 +119,8 @@ switch:
     pin: GPIO13
     restore_mode: ALWAYS_OFF
 
-# ── Boutons virtuels (impulsion 400 ms) ───────────────────────────────────────
-# Utilisés par Home Assistant pour déclencher l'ouverture d'un casier
+# Boutons virtuels - impulsion 400 ms
+# Utilises par Home Assistant pour declencher l'ouverture d'un casier
 
 button:
   - platform: template
@@ -173,7 +179,7 @@ button:
       - delay: 400ms
       - switch.turn_off: relay_8
 
-# ── Reed switches ──────────────────────────────────────────────────────────────
+# Reed switches
 
 binary_sensor:
   - platform: gpio
@@ -181,10 +187,10 @@ binary_sensor:
     id: door_1
     pin:
       number: GPIO34
-      mode: INPUT        # Pas de pull-up interne sur GPIO34 — pull-up externe 10kΩ requis
+      mode: INPUT        # Pull-up externe 10kOhm requis
     device_class: door
     filters:
-      - delayed_on: 50ms   # Anti-rebond
+      - delayed_on: 50ms
       - delayed_off: 50ms
 
   - platform: gpio
@@ -192,7 +198,7 @@ binary_sensor:
     id: door_2
     pin:
       number: GPIO35
-      mode: INPUT        # Pull-up externe requis
+      mode: INPUT        # Pull-up externe 10kOhm requis
     device_class: door
     filters:
       - delayed_on: 50ms
@@ -203,7 +209,7 @@ binary_sensor:
     id: door_3
     pin:
       number: GPIO36
-      mode: INPUT        # Pull-up externe requis
+      mode: INPUT        # Pull-up externe 10kOhm requis
     device_class: door
     filters:
       - delayed_on: 50ms
@@ -214,7 +220,7 @@ binary_sensor:
     id: door_4
     pin:
       number: GPIO39
-      mode: INPUT        # Pull-up externe requis
+      mode: INPUT        # Pull-up externe 10kOhm requis
     device_class: door
     filters:
       - delayed_on: 50ms
@@ -267,52 +273,44 @@ binary_sensor:
 
 ## Points d'attention
 
-- **GPIO 34/35/36/39 sans pull-up interne** : nécessitent des résistances 10kΩ externes vers 3.3V.
-- **restore_mode: ALWAYS_OFF** : garantit que les relais sont ouverts au redémarrage (sécurité).
-- **Durée de l'impulsion** : 400 ms est un bon défaut, à ajuster selon le modèle de serrure.
-- L'ESP32 de cette carte peut avoir les niveaux de GPIO relais inversés (actif LOW) selon le fabricant — vérifier en testant et inverser `inverted: true` si besoin.
+- **restore_mode: ALWAYS_OFF** : garantit que les relais sont ouverts au redémarrage.
+- L'ESP32 de cette carte peut avoir les niveaux de GPIO relais inversés (actif LOW) selon la version du PCB. Si les relais fonctionnent à l'envers, ajouter `inverted: true` sur les pins concernées.
 
 ## Flashage initial
 
-La carte n'a pas de port USB-C directement exploitable via ESPHome. Il faut passer par un adaptateur **USB-UART** externe.
+<img src="../../docs/img/usb_uart-ttl.jpg" width="400"/>
 
-### Références
+La carte ne dispose pas d'un port USB natif. Le premier flash passe par un adaptateur **USB-UART TTL** externe.
 
-- Pinout USB-UART pour cette carte : [forum HACF](https://forum.hacf.fr/t/carte-8-relais-avec-esp32-branchement-usb-uart/48181)
+Pinout de la carte : [forum HACF](https://forum.hacf.fr/t/carte-8-relais-avec-esp32-branchement-usb-uart/48181)
 
-### Câblage USB-UART → carte
+### Câblage USB-UART vers carte
 
 | USB-UART | Carte LC-Relay |
 |---|---|
-| TX | **RX** de la carte |
-| RX | **TX** de la carte |
+| TX | RX de la carte |
+| RX | TX de la carte |
 | GND | GND |
-| 3.3V | — (alimenter la carte en 12V séparément) |
+| 5V | VCC de la carte |
 
-> Attention : TX de l'adaptateur se branche sur RX de la carte, et vice-versa.
+Le 5V fourni par l'adaptateur USB-UART suffit à alimenter l'ESP32 pendant le flash.
 
 ### Passage en mode flash
 
-Avant de lancer `esptool`, mettre un **cavalier entre GND et GPIO0** sur la carte pour forcer l'ESP32 en mode bootloader. Retirer le cavalier après le flash.
+Mettre un cavalier entre **GND et GPIO0** avant de brancher l'USB-UART, pour forcer l'ESP32 en mode bootloader. Retirer le cavalier après le flash.
 
-### Commande de flash
-
-Générer d'abord le firmware depuis ESPHome (build only), puis flasher avec esptool :
+### Commande
 
 ```bash
-# Build dans ESPHome — récupérer le .factory.bin généré
 esphome compile smartlocker-relais.yaml
 
-# Flash via USB-UART
 esptool --chip esp32 \
         --port /dev/ttyUSB0 \
         --baud 460800 \
         write_flash -z 0x0 \
-        ~/Téléchargements/smartlocker-relais.factory.bin
+        ~/Telechargenents/smartlocker-relais.factory.bin
 ```
 
-Ajuster `/dev/ttyUSB0` selon le port détecté (`ls /dev/tty*` avant et après branchement pour l'identifier).
+Identifier le bon port avec `ls /dev/tty*` avant et après branchement de l'adaptateur.
 
-### Après le premier flash
-
-Les mises à jour suivantes se font en **OTA** directement depuis l'interface ESPHome de Home Assistant — plus besoin du câble.
+Les mises à jour suivantes se font en OTA depuis l'interface ESPHome de Home Assistant.

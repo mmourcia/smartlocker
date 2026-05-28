@@ -1,4 +1,4 @@
-# Backend Python — Logique métier
+# Backend Python - Logique métier
 
 > **Statut : à venir.** Cette section sera complétée quand le backend sera développé.
 

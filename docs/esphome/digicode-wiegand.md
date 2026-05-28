@@ -1,4 +1,4 @@
-# ESPHome — Digicode Wiegand 26
+# ESPHome - Digicode Wiegand 26
 
 ## Présentation
 
@@ -32,7 +32,7 @@ DATA1 ──────────────  GPIO_D1  (ex. GPIO5)
 ```
 
 > Certains digicodes acceptent du 5V ou 12V. Vérifier la datasheet du modèle utilisé.
-> Les lignes DATA fonctionnent en 5V logique — vérifier la compatibilité avec l'ESP32 (3.3V).
+> Les lignes DATA fonctionnent en 5V logique - vérifier la compatibilité avec l'ESP32 (3.3V).
 > Si incompatible, utiliser un diviseur de tension ou un level-shifter.
 
 ## Configuration ESPHome
@@ -171,6 +171,6 @@ on_tag:
 ## Notes
 
 - La plupart des digicodes Wiegand 26 transmettent 4 à 8 chiffres comme un "tag" unique.
-- Le composant ESPHome `wiegand` gère aussi Wiegand 34 et les badges RFID — utile pour
+- Le composant ESPHome `wiegand` gère aussi Wiegand 34 et les badges RFID - utile pour
   une évolution vers un système badge + PIN.
-- Ne pas stocker les codes PIN en clair dans les logs — désactiver `on_key` en production.
+- Ne pas stocker les codes PIN en clair dans les logs - désactiver `on_key` en production.

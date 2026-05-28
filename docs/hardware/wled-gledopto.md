@@ -1,4 +1,4 @@
-# Contrôleur LED WLED — Gledopto 4 voies
+# Contrôleur LED WLED - Gledopto 4 voies
 
 ## Principe
 
@@ -18,7 +18,7 @@ Avec 4 voies pour 8 casiers, chaque voie pilote 2 anneaux en série ou en parall
 | Voie 4 | Casier 7 + Casier 8 | Segment 3 (LEDs 0–23) |
 
 > Chaque anneau WS2812B comprend 12 LEDs. 2 anneaux par voie = 24 LEDs par segment.
-> Les 2 casiers d'une même voie partagent la couleur/animation — si on veut les différencier,
+> Les 2 casiers d'une même voie partagent la couleur/animation - si on veut les différencier,
 > il faut les câbler en série sur la même voie et définir des sous-segments dans WLED
 > (LEDs 0–11 = casier A, LEDs 12–23 = casier B).
 
@@ -45,7 +45,7 @@ l'intègre nativement sans configuration manuelle :
 1. WLED se connecte au WiFi (même réseau que le Raspberry Pi)
 2. Home Assistant découvre automatiquement l'appareil (`Paramètres > Appareils et services`)
 3. Les entités générées incluent :
-   - `light.wled_smartlocker` — contrôle global
+   - `light.wled_smartlocker` - contrôle global
    - Segments individuels si configurés dans WLED
 
 ## Configuration WLED recommandée
@@ -69,11 +69,12 @@ Créer des presets dans WLED pour chaque état :
 | Preset | Couleur | Animation | État casier |
 |---|---|---|---|
 | 1 | Vert `#00FF00` | Fixe | Libre |
-| 2 | Bleu `#0000FF` | Fixe | Occupé / notifié |
-| 3 | Orange `#FF8C00` | Pulse lent | Code saisi, ouverture |
-| 4 | Blanc `#FFFFFF` | Clignotant 1 Hz | Porte ouverte |
-| 5 | Rouge `#FF0000` | Flash 3× | Code incorrect |
-| 6 | Éteint | — | Hors service |
+| 2 | Bleu `#0000FF` | Fixe | Occupé, destinataire notifié |
+| 3 | Vert `#00FF00` | Clignotant 1 Hz | Code correct, casier sur le point de s'ouvrir |
+| 4 | Éteint | - | Autres casiers pendant l'ouverture (focus sur le casier 3) |
+| 5 | Orange `#FF8C00` | Clignotant rapide 4 Hz | Porte ouverte depuis trop longtemps |
+| 6 | Rouge `#FF0000` | Clignotant 2 Hz | Code incorrect (tous les casiers, 3s) |
+| 7 | Rouge `#FF0000` | Fixe | Casier hors service |
 
 Ces presets sont appelables depuis Home Assistant via le service `wled.preset` ou via l'API REST WLED.
 

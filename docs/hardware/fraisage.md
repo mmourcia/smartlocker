@@ -1,4 +1,4 @@
-# Fraisage — Logements anneaux LED dans le Kallax
+# Fraisage - Logements anneaux LED dans le Kallax
 
 ## Principe
 
@@ -11,7 +11,7 @@ et un gabarit imprimé en 3D.
 | Outil | Référence |
 |---|---|
 | Défonceuse | PARKSIDE POF 1200 ou Einhell TE-RO 1255 E (compatibles) |
-| Bague de copiage | Imprimée en 3D — voir `3d/` |
+| Bague de copiage | Imprimée en 3D - voir `3d/` |
 | Gabarit anneau LED | `3d/gabarit_anneau_led.3mf` |
 | Fraise | Fraise droite Ø selon logement anneau |
 

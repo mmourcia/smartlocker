@@ -1,118 +1,45 @@
-# 📦 Smart Locker - Casiers connectés pilotés par Home Assistant
+# Smart Locker - Casiers connectés pilotés par Home Assistant
 
-## Le projet
+Une personne dépose un colis dans un casier libre, l'affecte à un destinataire via une interface mobile, et ce destinataire reçoit une notification puis récupère son colis en tapant son code personnel devant le meuble. Pas de clé, pas de badge obligatoire, pas d'attente.
 
-Ce projet est un système de casiers connectés à usage intérieur, conçu pour permettre le dépôt et la récupération de colis dans un environnement partagé.
-
-Le principe est simple : une personne dépose un colis dans un casier libre, l'affecte à un destinataire via une interface mobile, et ce destinataire reçoit une notification puis récupère son colis en tapant son code personnel devant le meuble. Pas de clé, pas de badge obligatoire, pas d'attente.
-
-Le système est conçu pour un usage intérieur, dans un environnement de confiance. Il ne prétend pas à une sécurité de niveau industriel. L'objectif est la praticité et la traçabilité légère, pas le coffre-fort.
-
-Le meuble support est une étagère **IKEA Kallax 4×2** (8 casiers), chaque case étant équipée d'une porte, d'une serrure solénoïde et d'un anneau LED pour communiquer l'état au gestionnaire comme au destinataire.
+![Visuel IA](./docs/img/visuel_ia.png)
 
 ---
 
-## Architecture
+## Le principe
 
-### Vue d'ensemble
+Le support est une étagère **IKEA Kallax 4x2** (8 casiers), chaque case étant équipée d'une porte, d'une serrure solénoïde et d'un anneau LED pour communiquer l'état au gestionnaire comme au destinataire.
 
-```
-┌─────────────────────────────────────────────────────┐
-│                   Raspberry Pi 4                    │
-│              Home Assistant OS                      │
-│                                                     │
-│  ┌─────────────┐  ┌──────────┐  ┌───────────────┐   │
-│  │  ESPHome    │  │  MQTT    │  │  Automations  │   │
-│  │  (firmware) │  │  broker  │  │  Scripts      │   │
-│  └──────┬──────┘  └────┬─────┘  └───────────────┘   │
-└─────────┼──────────────┼────────────────────────────┘
-          │ WiFi         │ WiFi
-          ▼              ▼
-┌─────────────────────────────────────────────────────┐
-│           Carte LC-Relay-ESP32-8R-D5                │
-│                                                     │
-│  8 relais (mode impulsionnel)                       │
-│  GPIO libres → reed switches × 8                    │
-│  GPIO libres → anneaux LED NeoPixel × 8             │
-└──────────────────────┬──────────────────────────────┘
-                       │ 12V / signal
-          ┌────────────┼────────────┐
-          ▼            ▼            ▼
-    Serrures ×8   Reed switch ×8   LED ring ×8
-    solénoïde     MC-38            WS2812B 12 LEDs
-    12V DC        (état porte)     (état casier)
-```
+Le cerveau du système est un **Raspberry Pi 4** sous Home Assistant OS. Deux cartes ESP32 lui sont connectées en WiFi : une carte 8 relais qui pilote les serrures et lit l'état des portes, et un digicode Wiegand 26 positionné devant le meuble.
 
-### Composants matériels
+Le système est conçu pour un usage intérieur en environnement de confiance. Pas de sécurité de niveau industriel : l'objectif est la praticité et la traçabilité légère.
 
-| Composant | Référence | Rôle |
-|---|---|---|
-| Meuble | IKEA Kallax 4×2 | Support 8 casiers |
-| Cerveau | Raspberry Pi 4 | Home Assistant OS |
-| Interface utilisateur | Tablette Android | Dashboard HA en mode kiosk |
-| Contrôleur | LC-Relay-ESP32-8R-D5 | ESP32 + 8 relais intégrés |
-| Serrure | Solénoïde 12V (B07KWMH16C) | Verrouillage casier |
-| Détection porte | Reed switch MC-38 | État physique porte |
-| Signalétique | Anneau NeoPixel WS2812B 12 LEDs | Retour visuel par casier |
-| Alimentation | 12V DC switching 3A | Serrures + carte ESP32 |
-| Urgence | Bouton poussoir NO protégé | Bypass hardware tout ouvrir |
+---
 
-### Alimentation
+## Ce que voit l'utilisateur
 
-```
-230V AC (prise murale)
-    └── Réglette 3 sorties
-            ├── Alim 12V/3A  → carte ESP32 + serrures
-            ├── Alim USB-C 5V/3A → Raspberry Pi 4
-            └── Chargeur USB → Tablette Android
-```
-
-Le bouton d'urgence est câblé en **bypass hardware direct** sur le +12V des serrures, indépendamment de l'ESP32 et de Home Assistant. Il fonctionne même en cas de panne logicielle.
-
-### Couche logicielle
-
-| Brique | Rôle |
-|---|---|
-| **ESPHome** | Firmware ESP32 : relais en mode impulsionnel, lecture reed switches, pilotage NeoPixel |
-| **Home Assistant** | États casiers, attribution, dashboard, automatisations, notifications |
-| **Lovelace** | Interface admin (tablette) et interface utilisateur (digicode) |
-| **notify.smtp** | Notification email au destinataire lors du dépôt |
-
-### États d'un casier
-
-```
-LIBRE  ──(dépôt)──▶  OCCUPÉ  ──(attribution)──▶  EN ATTENTE
-                                                       │
-                                              (code correct)
-                                                       │
-                                                       ▼
-                                        OUVERT ──(refermeture)──▶  LIBRE
-```
-
-### Code couleur anneau LED
+Un casier passe par quatre états, lisibles d'un coup d'oeil sur l'anneau LED :
 
 | Couleur | État |
 |---|---|
-| 🟢 Vert | Libre |
-| 🔵 Bleu | Occupé - destinataire notifié |
-| 🟠 Orange | Code saisi - ouverture en cours |
-| ⚪ Blanc clignotant | Porte ouverte - récupération en cours |
-| 🔴 Rouge | Erreur / code incorrect |
-
-### Sécurité
-
-Le système est conçu pour un usage intérieur en environnement de confiance (réseau local uniquement). Les codes PIN des utilisateurs sont stockés dans des helpers Home Assistant. Aucune exposition sur internet n'est prévue en V1.
+| 🟢 Vert fixe | Casier libre |
+| 🔵 Bleu fixe | Occupé, destinataire notifié |
+| 🟢 Vert clignotant (un seul, autres éteints) | Code correct, ce casier va s'ouvrir |
+| 🟠 Orange clignotant | Porte ouverte depuis trop longtemps |
+| 🔴 Rouge clignotant (tous, 3s) | Code incorrect |
+| 🔴 Rouge fixe | Casier hors service |
 
 ---
 
-## Documentation
+## Documentation technique
 
-La documentation technique détaillée est dans le répertoire [`docs/`](docs/index.md) :
+Tout ce qu'il faut pour construire et configurer le système :
 
-- [Serrure solénoïde](docs/hardware/serrure.md) — pilotage relais + reed switch
-- [Alimentation](docs/hardware/alimentation.md) — architecture 230V → 12V/20A
-- [Contrôleur LED WLED Gledopto](docs/hardware/wled-gledopto.md) — 4 voies pour 8 casiers
-- [ESPHome — Carte relais](docs/esphome/carte-relais.md) — config complète LC-Relay-ESP32-8R-D5
-- [ESPHome — Digicode Wiegand 26](docs/esphome/digicode-wiegand.md) — saisie code PIN
-- [Home Assistant — Intégrations](docs/home-assistant/integrations.md) — entités, helpers, automatisations
-- [Backend Python](docs/backend/README.md) — logique métier (à venir)
+- [Serrure solénoïde](docs/hardware/serrure.md) - pilotage relais et retour via reed switch
+- [Alimentation](docs/hardware/alimentation.md) - architecture 230V / 12V 20A
+- [Contrôleur LED WLED Gledopto](docs/hardware/wled-gledopto.md) - 4 voies pour 8 casiers
+- [Fraisage logements LED](docs/hardware/fraisage.md) - gabarit 3D et défonceuse
+- [ESPHome - Carte relais](docs/esphome/carte-relais.md) - config complète LC-Relay-ESP32-8R-D5
+- [ESPHome - Digicode Wiegand 26](docs/esphome/digicode-wiegand.md) - saisie code PIN
+- [Home Assistant - Intégrations](docs/home-assistant/integrations.md) - entités, helpers, automatisations
+- [Backend Python](docs/backend/README.md) - logique métier (à venir)

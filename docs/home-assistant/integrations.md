@@ -1,4 +1,4 @@
-# Home Assistant — Intégrations
+# Home Assistant - Intégrations
 
 ## Vue d'ensemble
 
@@ -7,10 +7,10 @@
 | **ESPHome** (relais) | WiFi / API native | Commande serrures, lecture reed switches |
 | **ESPHome** (digicode) | WiFi / API native | Réception codes PIN saisis |
 | **WLED** | WiFi / API REST + mDNS | Pilotage anneaux LED par casier |
-| **MQTT** | TCP/IP | Optionnel — bus événements entre composants |
+| **MQTT** | TCP/IP | Optionnel - bus événements entre composants |
 | **notify.smtp** | SMTP | Email de notification au destinataire |
 
-## ESPHome — Carte relais
+## ESPHome - Carte relais
 
 L'intégration ESPHome s'ajoute automatiquement dès que l'ESP32 est flashé et joignable sur le réseau.
 
@@ -21,7 +21,7 @@ Entités exposées par la carte relais :
 | `button.ouvrir_casier_N` | Button | Déclenche l'impulsion relais |
 | `binary_sensor.porte_casier_N` | Binary sensor | État physique de la porte (reed switch) |
 
-## ESPHome — Digicode
+## ESPHome - Digicode
 
 Entités / événements exposés :
 
@@ -30,7 +30,7 @@ Entités / événements exposés :
 | `text_sensor.code_digicode` | Text sensor | Dernier code saisi (effacé après traitement) |
 | `esphome.keypad_code_entered` | Event | Code saisi, déclenche la vérification dans HA |
 
-## WLED — Gledopto
+## WLED - Gledopto
 
 Après découverte automatique, Home Assistant génère :
 
