@@ -1,41 +1,34 @@
-# ESPHome - Digicode Wiegand 26
+# ESPHome - Digicode Wiegand
 
-## Présentation
+<img src="../../docs/img/digicode.jpg" width="400"/>
 
-Le digicode utilise le protocole **Wiegand 26**, standard de l'industrie du contrôle d'accès.
-Il se connecte à un ESP32 dédié (séparé de la carte relais) via 3 fils : DATA0, DATA1, et GND.
+Référence : [composant wiegand ESPHome](https://esphome.io/components/wiegand/)
 
-La saisie du code PIN est traitée dans Home Assistant via l'intégration ESPHome : l'ESP32 transmet
-le code saisi, HA vérifie s'il correspond à un utilisateur connu et déclenche l'ouverture du casier
-associé.
+Le digicode se connecte à un ESP32 dédié via deux fils data (D0 et D1). L'ESP32 décode les touches
+et les assemble en code PIN via le composant `key_collector`, puis transmet le code complet à
+Home Assistant.
 
-## Protocole Wiegand 26
-
-Le protocole Wiegand 26 encode 26 bits sur 2 lignes data :
-- **DATA0** : impulsion si bit = 0
-- **DATA1** : impulsion si bit = 1
-- Les 2 lignes sont normalement HIGH (idle)
-- Durée bit : ~50 µs ; intervalle entre bits : ~1 ms
-
-Pour un clavier PIN, chaque touche génère un code sur ces lignes. Le composant ESPHome
-`wiegand` s'occupe de tout le décodage.
+---
 
 ## Câblage
 
-```
-Digicode              ESP32 (dédié)
-─────────             ─────────────
-+12V  ──────────────  VIN (via régulateur)
-GND   ──────────────  GND
-DATA0 ──────────────  GPIO_D0  (ex. GPIO4)
-DATA1 ──────────────  GPIO_D1  (ex. GPIO5)
-```
+| Digicode | ESP32 |
+|---|---|
+| VCC | 12V |
+| GND | GND |
+| D0 | GPIO4 |
+| D1 | GPIO5 |
 
-> Certains digicodes acceptent du 5V ou 12V. Vérifier la datasheet du modèle utilisé.
-> Les lignes DATA fonctionnent en 5V logique - vérifier la compatibilité avec l'ESP32 (3.3V).
-> Si incompatible, utiliser un diviseur de tension ou un level-shifter.
+> Les lignes D0/D1 fonctionnent en logique 5V. L'ESP32 tolère généralement ces niveaux en entrée,
+> mais en cas de problème ajouter un diviseur de tension ou un level-shifter.
+
+---
 
 ## Configuration ESPHome
+
+Le composant `wiegand` capture chaque touche via `on_key`. Le composant `key_collector` les
+assemble en séquence et déclenche l'envoi à Home Assistant quand l'utilisateur appuie sur `#`.
+La touche `*` efface la saisie en cours.
 
 ```yaml
 # smartlocker-digicode.yaml
@@ -53,6 +46,9 @@ esp32:
     type: arduino
 
 logger:
+  level: INFO
+  # Ne pas logger les codes PIN en production
+
 api:
   encryption:
     key: !secret api_encryption_key
@@ -62,115 +58,89 @@ wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
 
+# Wiegand - capture touche par touche
+
 wiegand:
   - id: keypad
     d0: GPIO4
     d1: GPIO5
     on_key:
-      - lambda: |-
-          ESP_LOGI("wiegand", "Touche: %d", x);
-    on_tag:
-      - lambda: |-
-          ESP_LOGI("wiegand", "Code saisi: %s", x.c_str());
-      - homeassistant.event:
-          event: esphome.keypad_code_entered
-          data:
-            code: !lambda 'return x;'
-    on_tag_removed:
-      - logger.log: "Fin de saisie"
-```
+      - key_collector.collect:
+          id: pin_collector
+          key: !lambda |
+            if (x >= 0 && x <= 9) return ('0' + x);
+            if (x == 10) return '*';
+            if (x == 11) return '#';
+            return 0;
 
-### Variante avec text_sensor (code transmis comme entité HA)
+# key_collector - assemble les touches en code PIN
 
-```yaml
-text_sensor:
-  - platform: template
-    name: "Code digicode"
-    id: keypad_code
-    icon: "mdi:dialpad"
-
-wiegand:
-  - id: keypad
-    d0: GPIO4
-    d1: GPIO5
-    on_tag:
+key_collector:
+  - id: pin_collector
+    min_length: 4
+    max_length: 8
+    end_keys: "#"
+    end_key_required: true
+    back_keys: "*"
+    timeout: 10s
+    on_result:
       - text_sensor.template.publish:
-          id: keypad_code
+          id: pin_code
           state: !lambda 'return x;'
       - homeassistant.event:
           event: esphome.keypad_code_entered
           data:
             code: !lambda 'return x;'
+    on_timeout:
+      - text_sensor.template.publish:
+          id: pin_code
+          state: ""
+
+# Expose le dernier code saisi comme entite Home Assistant
+
+text_sensor:
+  - platform: template
+    name: "Code digicode"
+    id: pin_code
+    icon: "mdi:dialpad"
 ```
 
-## Intégration côté Home Assistant
+### Touches speciales
 
-### Automatisation de vérification du code
+| Valeur Wiegand | Touche physique | Role dans key_collector |
+|---|---|---|
+| 0-9 | Chiffres | Saisie du code |
+| 10 | `*` | Efface la saisie en cours |
+| 11 | `#` | Valide et envoie le code |
+
+---
+
+## Cote Home Assistant
+
+Quand l'utilisateur valide avec `#`, l'evenement `esphome.keypad_code_entered` est fire avec le
+code en data. Une automatisation HA se charge de verifier le code et d'ouvrir le bon casier.
 
 ```yaml
-# automations.yaml
-alias: "Digicode - Vérification code PIN"
+alias: "Digicode - verification code PIN"
 trigger:
   - platform: event
     event_type: esphome.keypad_code_entered
-condition: []
 action:
   - variables:
       code_saisi: "{{ trigger.event.data.code }}"
-  - choose:
-      # Itérer sur les utilisateurs et leurs codes PIN (stockés en helpers)
-      - conditions:
-          - condition: template
-            value_template: >
-              {% for i in range(1, 9) %}
-                {% if states('input_text.casier_' ~ i ~ '_destinataire') != '' %}
-                  {% if code_saisi == states('input_text.user_' ~ 
-                      states('input_text.casier_' ~ i ~ '_destinataire') ~ '_pin') %}
-                    true
-                  {% endif %}
-                {% endif %}
-              {% endfor %}
-        sequence:
-          - service: button.press
-            target:
-              entity_id: >
-                {# Trouver le casier correspondant à l'utilisateur #}
-                button.ouvrir_casier_{{ casier_id }}
-    default:
-      - service: homeassistant.event
-        data:
-          event_type: esphome.keypad_code_rejected
+  # Verification et ouverture du casier - voir backend Python
 ```
 
-> La logique de vérification gagne à être déléguée à un **backend Python** pour plus de clarté
-> et de maintenabilité. Voir [backend/README.md](../backend/README.md).
+> La logique de verification est plus propre dans le backend Python.
+> Voir [backend/README.md](../backend/README.md).
 
-## Retour visuel après saisie
-
-Le digicode peut disposer d'un buzzer ou d'une LED intégrés (selon le modèle). ESPHome peut
-piloter ces sorties depuis Home Assistant pour confirmer ou rejeter la saisie :
-
-```yaml
-# Sur l'ESP32 digicode
-output:
-  - platform: gpio
-    pin: GPIO18
-    id: buzzer
-
-on_tag:
-  - homeassistant.event:
-      event: esphome.keypad_code_entered
-      data:
-        code: !lambda 'return x;'
-  # Bip court de confirmation de réception
-  - output.turn_on: buzzer
-  - delay: 100ms
-  - output.turn_off: buzzer
-```
+---
 
 ## Notes
 
-- La plupart des digicodes Wiegand 26 transmettent 4 à 8 chiffres comme un "tag" unique.
-- Le composant ESPHome `wiegand` gère aussi Wiegand 34 et les badges RFID - utile pour
-  une évolution vers un système badge + PIN.
-- Ne pas stocker les codes PIN en clair dans les logs - désactiver `on_key` en production.
+- Certains digicodes ont besoin d'une remise a zero usine pour passer en mode sortie Wiegand 26/34.
+  Consulter la notice du modele si les touches ne sont pas recues par l'ESP32.
+- Le `key_collector` attend `#` pour valider. Si le digicode envoie le PIN complet d'un coup
+  via `on_tag` (comportement de certains modeles), utiliser directement `on_tag` et supprimer
+  le `key_collector`.
+- `text_sensor` publie le code en clair dans Home Assistant. Prevoir de l'effacer apres traitement.

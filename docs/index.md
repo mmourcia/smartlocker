@@ -26,6 +26,9 @@ Le schéma source est disponible dans [architecture.drawio](architecture.drawio)
 ### Backend
 - [Backend Python](backend/README.md) - Logique métier, gestion des casiers, API (à venir)
 
+### Projet
+- [Budget](budget.md) - Liste des composants et coûts
+
 ---
 
 > Ce projet tourne sur un Raspberry Pi 4 sous Home Assistant OS.
