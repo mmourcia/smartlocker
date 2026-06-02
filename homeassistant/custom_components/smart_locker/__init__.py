@@ -19,8 +19,6 @@ from .const import (
     ATTR_LOCKER_ID,
     ATTR_USER,
     ESPHOME_BUTTON_OPEN,
-    CONF_NOTIFY_SERVICE,
-    DEFAULT_NOTIFY_SERVICE,
     DEFAULT_NOTIFICATION_TITLE,
     CONF_PIN_SENSOR,
     DEFAULT_PIN_SENSOR,
@@ -34,7 +32,6 @@ _LOGGER = logging.getLogger(__name__)
 
 CONFIG_SCHEMA = vol.Schema({
     DOMAIN: vol.Schema({
-        vol.Optional(CONF_NOTIFY_SERVICE, default=DEFAULT_NOTIFY_SERVICE): cv.string,
         vol.Optional(CONF_PIN_SENSOR, default=DEFAULT_PIN_SENSOR): cv.string,
     })
 }, extra=vol.ALLOW_EXTRA)
@@ -108,8 +105,6 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         locker.unassign(user)
         _LOGGER.info("Utilisateur %s retire du casier %s", user, locker_id)
 
-    notify_service = config.get(DOMAIN, {}).get(CONF_NOTIFY_SERVICE, DEFAULT_NOTIFY_SERVICE)
-
     async def handle_notify(call: ServiceCall) -> None:
         locker_id = call.data[ATTR_LOCKER_ID]
         locker = hass.data[DOMAIN].get(locker_id)
@@ -120,53 +115,89 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         if not assigned:
             _LOGGER.warning("Casier %s : aucun utilisateur assigne", locker_id)
             return
+
+        pin = locker.pin_code or "?"
+        pin_fmt = f"{pin[:3]}-{pin[3:]}" if len(pin) == 6 else pin
+        title = hass.data[DOMAIN]["settings"].get("notification_title", DEFAULT_NOTIFICATION_TITLE)
         recipients = hass.data[DOMAIN]["recipients"]
+        already_notified = locker.extra_state_attributes.get("notified_at", {})
         notified = False
+
         for user in assigned:
+            if user in already_notified:
+                _LOGGER.info("Utilisateur '%s' deja notifie pour casier %s - ignore", user, locker_id)
+                continue
             recipient = next(
                 (r for r in recipients if f"{r['first_name']} {r['last_name']}" == user),
                 None,
             )
             first_name = recipient["first_name"] if recipient else user
-            email = (recipient or {}).get("email", "")
-            pin = locker.pin_code or "?"
-            pin_fmt = f"{pin[:3]}-{pin[3:]}" if len(pin) == 6 else pin
+            email    = (recipient or {}).get("email",  "")
+            mobile   = (recipient or {}).get("mobile", "")
+            services = (recipient or {}).get("notify_services", [])
+
+            if not services:
+                _LOGGER.warning("Aucun service de notification configure pour '%s'", user)
+                continue
+
             message = (
                 f"Bonjour {first_name}, un colis a été déposé dans le casier {locker_id}. "
                 f"Votre code PIN est {pin_fmt}. "
                 "Saisissez-le sur le digicode pour récupérer votre colis."
             )
-            title = hass.data[DOMAIN]["settings"].get("notification_title", DEFAULT_NOTIFICATION_TITLE)
-            data: dict = {"title": title, "message": message}
-            if email:
-                data["target"] = [email]
-                data["data"] = {
-                    "html": (
-                        "<html><body style='font-family:Arial,sans-serif;max-width:480px;"
-                        "margin:0 auto;padding:24px;color:#333;'>"
-                        "<h2 style='color:#2196F3;margin-bottom:4px;'>"
-                        "\U0001f4e6 Un colis vous attend !</h2>"
-                        f"<p>Bonjour <strong>{first_name}</strong>,</p>"
-                        f"<p>Un colis a été déposé dans le "
-                        f"<strong>casier {locker_id}</strong>.</p>"
-                        "<p style='margin-bottom:6px;'>Votre code PIN&nbsp;:</p>"
-                        "<div style='text-align:center;margin:20px 0;'>"
-                        f"<span style='font-size:2.8em;font-family:monospace;font-weight:bold;"
-                        f"letter-spacing:10px;color:#1565C0;background:#E3F2FD;"
-                        f"padding:14px 28px;border-radius:10px;display:inline-block;'>"
-                        f"{pin_fmt}</span></div>"
-                        "<p>Rendez-vous devant le meuble et saisissez ce code sur le digicode.</p>"
-                        "<hr style='border:none;border-top:1px solid #eee;margin:24px 0;'>"
-                        "<p style='font-size:0.8em;color:#aaa;'>Smart Locker</p>"
-                        "</body></html>"
-                    )
-                }
-            await hass.services.async_call("notify", notify_service, data)
-            _LOGGER.info(
-                "Notification envoyee a %s%s pour casier %s",
-                user, f" ({email})" if email else "", locker_id,
+            html = (
+                "<html><body style='font-family:Arial,sans-serif;max-width:480px;"
+                "margin:0 auto;padding:24px;color:#333;'>"
+                "<h2 style='color:#2196F3;margin-bottom:4px;'>"
+                "\U0001f4e6 Un colis vous attend !</h2>"
+                f"<p>Bonjour <strong>{first_name}</strong>,</p>"
+                f"<p>Un colis a été déposé dans le <strong>casier {locker_id}</strong>.</p>"
+                "<p style='margin-bottom:6px;'>Votre code PIN&nbsp;:</p>"
+                "<div style='text-align:center;margin:20px 0;'>"
+                f"<span style='font-size:2.8em;font-family:monospace;font-weight:bold;"
+                f"letter-spacing:10px;color:#1565C0;background:#E3F2FD;"
+                f"padding:14px 28px;border-radius:10px;display:inline-block;'>"
+                f"{pin_fmt}</span></div>"
+                "<p>Rendez-vous devant le meuble et saisissez ce code sur le digicode.</p>"
+                "<hr style='border:none;border-top:1px solid #eee;margin:24px 0;'>"
+                "<p style='font-size:0.8em;color:#aaa;'>Smart Locker</p>"
+                "</body></html>"
             )
-            notified = True
+
+            _EMAIL_SVC = ("smtp", "mail", "gmail", "imap", "email")
+            for svc in services:
+                svc_is_email = any(k in svc.lower() for k in _EMAIL_SVC)
+                data: dict = {"title": title, "message": message}
+
+                if svc_is_email:
+                    if not email:
+                        _LOGGER.warning(
+                            "notify.%s nécessite un email mais '%s' n'en a pas", svc, user
+                        )
+                        continue
+                    data["target"] = [email]
+                    data["data"]   = {"html": html}
+                else:
+                    if not mobile:
+                        _LOGGER.warning(
+                            "notify.%s nécessite un numéro mobile mais '%s' n'en a pas — "
+                            "renseigner le champ Tél mobile dans la carte Destinataires",
+                            svc, user,
+                        )
+                        continue
+                    data["target"] = [mobile]
+
+                try:
+                    await hass.services.async_call("notify", svc, data)
+                    _LOGGER.info(
+                        "notify.%s → %s pour casier %s",
+                        svc, data["target"][0], locker_id,
+                    )
+                    notified = True
+                except Exception as err:
+                    _LOGGER.error("Erreur notify.%s pour %s : %s", svc, user, err)
+            locker.mark_user_notified(user)
+
         if notified:
             locker.notify_sent()
 

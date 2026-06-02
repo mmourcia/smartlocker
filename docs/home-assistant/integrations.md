@@ -64,18 +64,34 @@ Après découverte automatique, Home Assistant génère :
 ## Notifications
 
 La notification est déclenchée par le bouton **Notifier** de la carte Lovelace.
-Elle passe par le service HA configuré dans `configuration.yaml` (`notify_service`).
+Les services utilisés sont configurés **par destinataire** dans la carte Destinataires — aucune
+clé globale dans `configuration.yaml`.
 
 ### Services supportés
 
-| Service | Configuration | `notify_service` |
+| Service | Configuration | Nom dans HA |
 |---|---|---|
-| SMTP (Gmail, OVH…) | `notify:` dans `configuration.yaml` — voir [dashboard.md](dashboard.md) | `smtp_pharmacie` (nom du bloc) |
+| SMTP (Gmail, OVH…) | Bloc `notify:` dans `configuration.yaml` | nom du bloc (ex : `smtp_pharmacie`) |
 | Google Mail | Intégration UI — Paramètres › Appareils | `google_mail` |
 | Application mobile | Companion App installée sur le téléphone | `mobile_app_<appareil>` |
+| SMS SMSFactor | Bloc `notify:` REST dans `configuration.yaml` | `smsfactor` (nom du bloc) |
 
-Le service reçoit automatiquement `target: [email]` si le destinataire a un email renseigné.
-Sans email (ex : service mobile), le message est envoyé sans `target` (l'appareil est déterminé par le nom du service).
+### Sélection automatique de la cible (`target`)
+
+Le composant détecte le type de service à partir de son nom :
+
+- Nom contenant `smtp`, `mail`, `gmail`, `imap` ou `email` → **service email**
+  - `target` = adresse email du destinataire
+  - Corps : version HTML avec PIN en grand
+- Autre nom → **service mobile/SMS**
+  - `target` = numéro de téléphone du destinataire
+
+Si le champ requis (email ou mobile) est vide pour un destinataire, le service est ignoré avec
+un avertissement dans les logs HA.
+
+Un destinataire peut avoir plusieurs services cochés (ex : email + SMS) — les deux sont envoyés.
+Un destinataire déjà notifié est ignoré si le bouton **Notifier** est rappuyé ; il redevient
+notifiable après un **Libérer**.
 
 ### Contenu de la notification
 
@@ -91,7 +107,9 @@ Sans email (ex : service mobile), le message est envoyé sans `target` (l'appare
 
 | Entité | Type | Attributs |
 |---|---|---|
-| `smart_locker.casier_N` | Entity | `state`, `assigned_users`, `pin_code`, `retrieved_at`, `locker_id` |
+| `smart_locker.casier_N` | Entity | `state`, `assigned_users`, `pin_code`, `retrieved_at`, `notified_at`, `locker_id` |
+
+- `notified_at` : dictionnaire `{ "Prénom Nom": "DD/MM HH:MM" }` — présent uniquement si au moins un utilisateur a été notifié. Remis à vide au `reset`.
 
 ### États métier
 
@@ -120,8 +138,14 @@ Les données sont stockées dans `.storage/smart_locker_recipients` (JSON, gér�
 ```json
 {
   "recipients": [
-    { "id": "uuid", "first_name": "Jean", "last_name": "Dupont",
-      "mobile": "0612345678", "email": "jean.dupont@example.com" }
+    {
+      "id": "uuid",
+      "first_name": "Jean",
+      "last_name": "Dupont",
+      "mobile": "0612345678",
+      "email": "jean.dupont@example.com",
+      "notify_services": ["smtp_pharmacie", "smsfactor"]
+    }
   ],
   "settings": {
     "notification_title": "Colis mis à disposition à la pharmacie"

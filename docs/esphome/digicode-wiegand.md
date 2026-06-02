@@ -25,26 +25,15 @@ a été changé, la séquence suivante le remet en WG26 :
 
 ## Câblage
 
-Les lignes D0/D1 du digicode sont en logique **5V**. L'ESP32 ne tolère que 3.3V en entrée :
-il faut un diviseur de tension sur chaque ligne.
+Les lignes D0/D1 du digicode sont en logique 5V. En pratique, l'ESP32 encaisse ce niveau
+sans problème sur GPIO14 et GPIO27 — aucun diviseur de tension n'est nécessaire.
 
-```
-D0 (5V) ── R1 1kΩ ──┬── GPIO14
-                     │
-                    R2 2kΩ
-                     │
-                    GND
-```
-
-Même montage pour D1/GPIO27. Le diviseur ramène le 5V à 3.3V sans déformer les pulses
-Wiegand (~50µs).
-
-| Digicode | Câblage intermédiaire | ESP32 |
-|---|---|---|
-| VCC | - | 12V |
-| GND | GND commun | GND |
-| D0 | Diviseur 1kΩ/2kΩ | GPIO14 |
-| D1 | Diviseur 1kΩ/2kΩ | GPIO27 |
+| Digicode | ESP32 |
+|---|---|
+| VCC | 12V |
+| GND | GND commun |
+| D0 | GPIO14 |
+| D1 | GPIO27 |
 
 ---
 
@@ -186,8 +175,6 @@ action:
   programmation : `* 123456 # 0 31 #` (voir section ci-dessus).
 - Éviter GPIO0, GPIO2, GPIO5, GPIO12, GPIO15 (strapping pins au boot) et GPIO34-39 (input
   only, pas de pull-up interne). GPIO14 et GPIO27 sont des choix surs.
-- Les lignes D0/D1 etant en 5V, le diviseur de tension 1kΩ/2kΩ est obligatoire pour
-  proteger les GPIO de l'ESP32 (3.3V max).
 - L'ID de badge est transmis sous forme de chaine dans `x`. Pour l'afficher en hexadecimal :
   `return str_sprintf("%llX", atoll(x.c_str()));`
 - Les `text_sensor` publient les donnees en clair dans Home Assistant. Prevoir de les effacer

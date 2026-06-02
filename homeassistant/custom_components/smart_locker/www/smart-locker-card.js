@@ -72,15 +72,30 @@ const CSS = `
   }
   .user-badge {
     display: inline-flex;
-    align-items: center;
-    gap: 4px;
+    flex-direction: column;
+    gap: 1px;
     font-size: 0.8em;
-    padding: 2px 6px 2px 10px;
+    padding: 3px 6px 3px 10px;
     border-radius: 12px;
     background: var(--primary-color, #2196F3);
     color: white;
     font-weight: 500;
   }
+  .user-badge-top {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .user-badge-notif {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    font-size: 0.82em;
+    font-weight: 400;
+    opacity: 0.88;
+    padding-bottom: 1px;
+  }
+  .user-badge-notif ha-icon { --mdc-icon-size: 10px; color: inherit; }
   .user-badge-remove {
     display: flex;
     align-items: center;
@@ -162,6 +177,34 @@ const CSS = `
   .icon-btn:hover { background: var(--primary-color); color: white; }
 `;
 
+class SmartLockerCardEditor extends HTMLElement {
+  setConfig(config) {
+    this._config = config;
+    this._render();
+  }
+  _render() {
+    this.innerHTML = `
+      <div style="padding:12px 16px;">
+        <label style="display:flex;align-items:center;gap:10px;font-size:0.9em;">
+          <span style="flex-shrink:0;">Numéro de casier</span>
+          <select style="flex:1;padding:5px 8px;border-radius:6px;border:1px solid #ccc;font-size:1em;">
+            ${[1,2,3,4,5,6,7,8].map(i =>
+              `<option value="${i}" ${(this._config || {}).locker_id == i ? 'selected' : ''}>${i}</option>`
+            ).join('')}
+          </select>
+        </label>
+      </div>
+    `;
+    this.querySelector('select').onchange = e => {
+      this.dispatchEvent(new CustomEvent('config-changed', {
+        detail: { config: { ...this._config, locker_id: Number(e.target.value) } },
+        bubbles: true, composed: true,
+      }));
+    };
+  }
+}
+customElements.define('smart-locker-card-editor', SmartLockerCardEditor);
+
 class SmartLockerCard extends HTMLElement {
   constructor() {
     super();
@@ -169,6 +212,9 @@ class SmartLockerCard extends HTMLElement {
     this._recipients = [];
     this._recipientsFetched = false;
   }
+
+  static getConfigElement() { return document.createElement('smart-locker-card-editor'); }
+  static getStubConfig()    { return { locker_id: 1 }; }
 
   setConfig(config) {
     if (!config.locker_id) throw new Error('locker_id requis');
@@ -313,11 +359,15 @@ class SmartLockerCard extends HTMLElement {
 
     // Badges utilisateurs avec bouton de désassignation
     const usersEl = sr.getElementById('users');
+    const notifiedAt = entity.attributes.notified_at || {};
     usersEl.innerHTML = '';
     if (users.length) {
       users.forEach(u => {
         const badge = document.createElement('div');
         badge.className = 'user-badge';
+
+        const top = document.createElement('div');
+        top.className = 'user-badge-top';
         const name = document.createElement('span');
         name.textContent = u;
         const removeBtn = document.createElement('button');
@@ -325,8 +375,18 @@ class SmartLockerCard extends HTMLElement {
         removeBtn.textContent = '×';
         removeBtn.title = `Retirer ${u}`;
         removeBtn.onclick = () => this._svc('unassign', { user: u });
-        badge.appendChild(name);
-        badge.appendChild(removeBtn);
+        top.appendChild(name);
+        top.appendChild(removeBtn);
+        badge.appendChild(top);
+
+        const notifTime = notifiedAt[u];
+        if (notifTime) {
+          const notifEl = document.createElement('div');
+          notifEl.className = 'user-badge-notif';
+          notifEl.innerHTML = `<ha-icon icon="mdi:bell"></ha-icon>${notifTime}`;
+          badge.appendChild(notifEl);
+        }
+
         usersEl.appendChild(badge);
       });
     } else {
@@ -353,6 +413,14 @@ class SmartLockerCard extends HTMLElement {
 }
 
 customElements.define('smart-locker-card', SmartLockerCard);
+
+window.customCards = window.customCards || [];
+window.customCards.push({
+  type:        'smart-locker-card',
+  name:        'Smart Locker — Casier',
+  description: 'État, assignation et ouverture d\'un casier',
+  preview:     false,
+});
 
 // ─── Carte gestion des destinataires ────────────────────────────────────────
 
@@ -487,6 +555,52 @@ const RCSS = `
   .field input:focus { border-color: var(--primary-color); }
   .field input.err { border-color: #F44336; }
   .form-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+  /* Sélecteur de services de notification */
+  .svc-label {
+    font-size: 0.75em;
+    color: var(--secondary-text-color);
+    font-weight: 500;
+    margin-bottom: 4px;
+  }
+  .svc-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-bottom: 10px;
+  }
+  .svc-check {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.78em;
+    padding: 3px 8px;
+    border-radius: 12px;
+    border: 1px solid var(--divider-color);
+    cursor: pointer;
+    user-select: none;
+    background: var(--card-background-color);
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .svc-check input { display: none; }
+  .svc-check.active {
+    background: var(--primary-color);
+    border-color: var(--primary-color);
+    color: white;
+  }
+
+  /* Badges services dans le tableau */
+  .svc-badges { display: flex; flex-wrap: wrap; gap: 3px; }
+  .svc-badge {
+    font-size: 0.7em;
+    padding: 1px 6px;
+    border-radius: 8px;
+    background: var(--primary-color);
+    color: white;
+    white-space: nowrap;
+  }
+  .svc-badge-none { font-size: 0.75em; color: var(--secondary-text-color); }
+
   .r-btn {
     padding: 6px 14px;
     border: none;
@@ -506,6 +620,7 @@ const RCSS = `
 `;
 
 class SmartLockerRecipientsCard extends HTMLElement {
+  static getStubConfig() { return {}; }
   constructor() {
     super();
     this.attachShadow({ mode: 'open' });
@@ -544,11 +659,11 @@ class SmartLockerRecipientsCard extends HTMLElement {
         <table>
           <thead>
             <tr>
-              <th>Prénom</th><th>Nom</th><th>Tél mobile</th><th>Email</th><th></th>
+              <th>Prénom</th><th>Nom</th><th>Tél mobile</th><th>Email</th><th>Notifs</th><th></th>
             </tr>
           </thead>
           <tbody id="tbody">
-            <tr><td colspan="5" class="empty">Chargement…</td></tr>
+            <tr><td colspan="6" class="empty">Chargement…</td></tr>
           </tbody>
         </table>
       </ha-card>
@@ -634,7 +749,7 @@ class SmartLockerRecipientsCard extends HTMLElement {
     if (!tbody) return;
     tbody.innerHTML = '';
     if (!this._recipients.length) {
-      tbody.innerHTML = '<tr><td colspan="5" class="empty">Aucun destinataire — cliquez sur Ajouter.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="6" class="empty">Aucun destinataire — cliquez sur Ajouter.</td></tr>';
       return;
     }
     for (const r of this._recipients) {
@@ -643,7 +758,14 @@ class SmartLockerRecipientsCard extends HTMLElement {
         <td>${this._esc(r.first_name)}</td>
         <td>${this._esc(r.last_name)}</td>
         <td>${this._esc(r.mobile || '—')}</td>
-        <td>${this._esc(r.email)}</td>
+        <td>${this._esc(r.email || '—')}</td>
+        <td>
+          <div class="svc-badges">
+            ${(r.notify_services || []).length
+              ? (r.notify_services || []).map(s => `<span class="svc-badge">${this._esc(s)}</span>`).join('')
+              : '<span class="svc-badge-none">—</span>'}
+          </div>
+        </td>
         <td class="col-actions">
           <button class="r-icon-btn" data-id="${r.id}" data-action="edit" title="Modifier">
             <ha-icon icon="mdi:pencil"></ha-icon>
@@ -668,7 +790,26 @@ class SmartLockerRecipientsCard extends HTMLElement {
 
   _showForm(recipient) {
     const isNew = !recipient;
-    const v = isNew ? { first_name: '', last_name: '', mobile: '', email: '' } : recipient;
+    const v = isNew
+      ? { first_name: '', last_name: '', mobile: '', email: '', notify_services: [] }
+      : recipient;
+
+    // Services disponibles depuis hass.services.notify, sans les méta-services HA
+    const _SKIP = new Set(['persistent_notification', 'all', 'notify']);
+    const available = Object.keys(this._hass.services.notify || {})
+      .filter(s => !_SKIP.has(s))
+      .sort();
+    const selected = new Set(v.notify_services || []);
+
+    const svcHtml = available.length
+      ? available.map(s =>
+          `<label class="svc-check ${selected.has(s) ? 'active' : ''}" data-svc="${this._esc(s)}">
+            <input type="checkbox" value="${this._esc(s)}" ${selected.has(s) ? 'checked' : ''}>
+            ${this._esc(s)}
+          </label>`
+        ).join('')
+      : '<span style="font-size:0.8em;color:var(--secondary-text-color)">Aucun service notify disponible</span>';
+
     const container = this.shadowRoot.getElementById('form-container');
     container.innerHTML = `
       <div class="form">
@@ -687,10 +828,12 @@ class SmartLockerRecipientsCard extends HTMLElement {
             <input id="f-mobile" type="tel" value="${this._esc(v.mobile || '')}" placeholder="0612345678">
           </div>
           <div class="field">
-            <label>Email *</label>
-            <input id="f-email" type="email" value="${this._esc(v.email)}" placeholder="jean.dupont@example.com">
+            <label>Email</label>
+            <input id="f-email" type="email" value="${this._esc(v.email || '')}" placeholder="jean.dupont@example.com">
           </div>
         </div>
+        <div class="svc-label">Services de notification</div>
+        <div class="svc-list" id="svc-list">${svcHtml}</div>
         <div class="form-actions">
           <button class="r-btn r-btn-secondary" id="f-cancel">Annuler</button>
           <button class="r-btn r-btn-primary" id="f-save">Enregistrer</button>
@@ -700,6 +843,16 @@ class SmartLockerRecipientsCard extends HTMLElement {
     const sr = this.shadowRoot;
     sr.getElementById('f-cancel').onclick = () => { container.innerHTML = ''; };
     sr.getElementById('f-save').onclick   = () => this._save(isNew ? null : recipient.id);
+
+    // Toggle visuel des badges-services
+    sr.getElementById('svc-list').addEventListener('click', e => {
+      const label = e.target.closest('.svc-check');
+      if (!label) return;
+      const cb = label.querySelector('input[type=checkbox]');
+      cb.checked = !cb.checked;
+      label.classList.toggle('active', cb.checked);
+    });
+
     sr.getElementById('f-first').focus();
   }
 
@@ -708,15 +861,21 @@ class SmartLockerRecipientsCard extends HTMLElement {
     const get = sel => sr.getElementById(sel).value.trim();
     const first_name = get('f-first'), last_name = get('f-last');
     const mobile = get('f-mobile'), email = get('f-email');
+    const notify_services = [...sr.querySelectorAll('#svc-list input:checked')].map(cb => cb.value);
+
     let ok = true;
-    for (const [sel, val] of [['f-first', first_name], ['f-last', last_name], ['f-email', email]]) {
+    for (const [sel, val] of [['f-first', first_name], ['f-last', last_name]]) {
       sr.getElementById(sel).classList.toggle('err', !val);
       if (!val) ok = false;
     }
     if (!ok) return;
+
     try {
       const type = id ? 'smart_locker/recipients/update' : 'smart_locker/recipients/add';
-      await this._hass.callWS({ type, ...(id ? { id } : {}), first_name, last_name, mobile, email });
+      await this._hass.callWS({
+        type, ...(id ? { recipient_id: id } : {}),
+        first_name, last_name, mobile, email, notify_services,
+      });
       sr.getElementById('form-container').innerHTML = '';
       await this._load();
     } catch (err) { console.error('SmartLocker recipients save:', err); }
@@ -726,7 +885,7 @@ class SmartLockerRecipientsCard extends HTMLElement {
     const r = this._recipients.find(x => x.id === id);
     if (!r || !confirm(`Supprimer ${r.first_name} ${r.last_name} ?`)) return;
     try {
-      await this._hass.callWS({ type: 'smart_locker/recipients/delete', id });
+      await this._hass.callWS({ type: 'smart_locker/recipients/delete', recipient_id: id });
       await this._load();
     } catch (err) { console.error('SmartLocker recipients delete:', err); }
   }
@@ -739,3 +898,10 @@ class SmartLockerRecipientsCard extends HTMLElement {
 }
 
 customElements.define('smart-locker-recipients-card', SmartLockerRecipientsCard);
+
+window.customCards.push({
+  type:        'smart-locker-recipients-card',
+  name:        'Smart Locker — Destinataires',
+  description: 'Gestion des destinataires et paramètres de notification',
+  preview:     false,
+});

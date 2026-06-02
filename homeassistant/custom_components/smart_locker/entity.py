@@ -12,6 +12,7 @@ class LockerEntity(Entity):
         self._assigned_users: list[str] = []
         self._pin_code: str | None = None
         self._retrieved_at: str | None = None
+        self._notified_at: dict[str, str] = {}
 
     @property
     def locker_id(self) -> int:
@@ -54,6 +55,8 @@ class LockerEntity(Entity):
             attrs["pin_code"] = self._pin_code
         if self._retrieved_at:
             attrs["retrieved_at"] = self._retrieved_at
+        if self._notified_at:
+            attrs["notified_at"] = dict(self._notified_at)
         return attrs
 
     def assign(self, user: str) -> None:
@@ -66,8 +69,13 @@ class LockerEntity(Entity):
 
     def unassign(self, user: str) -> None:
         self._assigned_users = [u for u in self._assigned_users if u != user]
+        self._notified_at.pop(user, None)
         if not self._assigned_users:
             self._state = STATE_FREE
+        self.async_write_ha_state()
+
+    def mark_user_notified(self, user: str) -> None:
+        self._notified_at[user] = datetime.now().strftime("%d/%m %H:%M")
         self.async_write_ha_state()
 
     def notify_sent(self) -> None:
@@ -84,4 +92,5 @@ class LockerEntity(Entity):
         self._assigned_users = []
         self._pin_code = None
         self._retrieved_at = None
+        self._notified_at = {}
         self.async_write_ha_state()

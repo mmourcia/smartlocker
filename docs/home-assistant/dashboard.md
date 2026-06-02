@@ -17,22 +17,24 @@ Le composant enregistre automatiquement au démarrage :
 
 ## configuration.yaml
 
-### 1. Service de notification
+### 1. Services de notification
 
-Choisir **une** des options ci-dessous selon le moyen de notification souhaité.
+Les services de notification sont sélectionnés **par destinataire** depuis la carte Destinataires
+(champ *Services de notification*). Déclarer ici les services HA souhaités — choisir une ou
+plusieurs options selon les moyens de contact disponibles.
 
 #### Option A — SMTP (Gmail, OVH, Office 365…)
 
 ```yaml
 notify:
-  - name: smtp_pharmacie          # nom libre, repris dans smart_locker.notify_service
+  - name: smtp_pharmacie
     platform: smtp
     server: smtp.gmail.com        # smtp.office365.com, ssl0.ovh.net…
     port: 587
     starttls: true
     sender: pharmacie@gmail.com
     username: pharmacie@gmail.com
-    password: xxxx_xxxx_xxxx_xxxx # mot de passe d'application Gmail (pas le mot de passe du compte)
+    password: !secret smtp_password   # mot de passe d'application Gmail
 ```
 
 > Pour Gmail : compte Google › Sécurité › Mots de passe des applications.
@@ -48,25 +50,51 @@ Elle crée automatiquement le service `notify.google_mail`. Aucune ligne YAML su
 Aucune configuration YAML. Le service est créé automatiquement à l'installation
 de l'app sur le téléphone. Son nom suit le format `notify.mobile_app_<nom_appareil>`.
 
+#### Option D — SMS via SMSFactor (API REST)
+
+Créer d'abord la clé dans `secrets.yaml` :
+
+```yaml
+# secrets.yaml
+smsfactor_token: "Bearer VOTRE_TOKEN_API_SMSFACTOR"
+```
+
+Puis dans `configuration.yaml` :
+
+```yaml
+notify:
+  - name: smsfactor
+    platform: rest
+    resource: https://api.smsfactor.com/send
+    method: GET
+    headers:
+      Authorization: !secret smsfactor_token
+      Accept: "application/json"
+    message_param_name: text
+    target_param_name: to
+    data:
+      pushtype: alert
+      sender: PharmacieHV        # nom affiché comme expéditeur (11 car. max)
+```
+
+> Le token API est disponible sur [app.smsfactor.com](https://app.smsfactor.com) › API.
+> La clé `Authorization` doit être hors guillemets dans YAML pour que `!secret` soit résolu.
+> Le champ **Tél mobile** du destinataire doit être renseigné (format `0612345678`).
+
 ---
 
 ### 2. Composant Smart Locker
 
 ```yaml
 smart_locker:
-  # Nom du service notify à utiliser (partie après "notify.")
-  # Exemples : smtp_pharmacie | google_mail | mobile_app_oneplus12_mika
-  notify_service: smtp_pharmacie
-
   # Optionnel — capteur digicode ESPHome (valeur par défaut ci-dessous)
   pin_sensor: sensor.smart_locker_digicode_code_pin_digicode
 ```
 
-Seule la clé `notify_service` est utile à modifier. Le `pin_sensor` n'est à renseigner
-que si le nom d'entité ESPHome diffère de la valeur par défaut.
+La clé `pin_sensor` n'est à renseigner que si le nom d'entité ESPHome diffère de la valeur par défaut.
 
-> Les destinataires (prénom, nom, téléphone, email) et l'objet des notifications
-> se gèrent directement depuis la carte **Destinataires** dans le dashboard — aucune
+> Les destinataires (prénom, nom, téléphone, email, services de notification) et l'objet des
+> notifications se gèrent entièrement depuis la carte **Destinataires** — aucune autre
 > modification de `configuration.yaml` requise.
 
 ---
@@ -115,8 +143,11 @@ Les deux types de cartes peuvent aussi être placées sur des vues séparées
 
 - **Objet des notifications** : champ éditable en haut de la carte (crayon). Valeur par défaut :
   *"Colis mis à disposition à la pharmacie"*. Persisté entre les redémarrages.
-- **Tableau** : liste des destinataires avec prénom, nom, téléphone et email.
+- **Tableau** : liste des destinataires avec prénom, nom, téléphone, email et services de notification.
 - **Boutons** : crayon (modifier), corbeille (supprimer), **Ajouter** (formulaire inline).
+- **Formulaire** : 4 champs texte + liste des services `notify.*` disponibles dans HA (cases à cocher).
+  Sélectionner un ou plusieurs services par destinataire. Un destinataire peut recevoir à la fois
+  un email et un SMS si les deux services sont cochés.
 
 ### Carte Casier (`smart-locker-card`)
 
@@ -127,9 +158,9 @@ Les deux types de cartes peuvent aussi être placées sur des vues séparées
 | Badge porte | Ouverte / Fermée (état physique reed switch) |
 | Code PIN | Affiché si état Occupé ou En attente (ex : `620-181`) |
 | Date récupération | Horodatage affiché si état Récupéré |
-| Badges utilisateurs | Un badge par destinataire assigné, avec bouton × pour retirer |
+| Badges utilisateurs | Un badge par destinataire assigné, avec bouton × pour retirer. Affiche l'icône 🔔 et l'heure si une notification a été envoyée. |
 | **Ouvrir** | Déclenche l'impulsion relais ESPHome |
-| **Notifier** | Envoie la notification avec le code PIN au(x) destinataire(s) |
+| **Notifier** | Envoie la notification avec le code PIN. Un destinataire déjà notifié est ignoré (réinitialisé à la libération du casier). |
 | **Libérer** | Remet le casier à l'état Libre, efface PIN et assignations |
 | Dropdown + ✚ | Assigner un destinataire (liste issue de la carte Destinataires) |
 
@@ -147,6 +178,6 @@ Les deux types de cartes peuvent aussi être placées sur des vues séparées
 
 1. Déposer le colis dans le casier
 2. Assigner le destinataire via le dropdown → le casier passe en **Occupé**, un PIN à 6 chiffres est généré
-3. Cliquer **Notifier** → email/push envoyé avec le PIN, casier passe en **En attente**
+3. Cliquer **Notifier** → email/SMS envoyé avec le PIN, casier passe en **En attente**, badge 🔔 horodaté affiché
 4. Le destinataire saisit son PIN sur le digicode → casier s'ouvre automatiquement, passe en **Récupéré**
 5. Cliquer **Libérer** pour remettre le casier à disposition

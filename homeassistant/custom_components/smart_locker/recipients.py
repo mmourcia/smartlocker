@@ -48,17 +48,19 @@ async def ws_list_recipients(hass: HomeAssistant, connection: websocket_api.Acti
     vol.Required("type"): "smart_locker/recipients/add",
     vol.Required("first_name"): str,
     vol.Required("last_name"): str,
-    vol.Optional("mobile", default=""): str,
-    vol.Required("email"): str,
+    vol.Optional("mobile",          default=""): str,
+    vol.Optional("email",           default=""): str,
+    vol.Optional("notify_services", default=[]): [str],
 })
 @websocket_api.async_response
 async def ws_add_recipient(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict) -> None:
     recipient = {
-        "id":         str(uuid.uuid4()),
-        "first_name": msg["first_name"],
-        "last_name":  msg["last_name"],
-        "mobile":     msg.get("mobile", ""),
-        "email":      msg["email"],
+        "id":              str(uuid.uuid4()),
+        "first_name":      msg["first_name"],
+        "last_name":       msg["last_name"],
+        "mobile":          msg.get("mobile", ""),
+        "email":           msg.get("email", ""),
+        "notify_services": msg.get("notify_services", []),
     }
     hass.data[DOMAIN]["recipients"].append(recipient)
     await _save(hass)
@@ -67,23 +69,25 @@ async def ws_add_recipient(hass: HomeAssistant, connection: websocket_api.Active
 
 @websocket_api.websocket_command({
     vol.Required("type"): "smart_locker/recipients/update",
-    vol.Required("id"): str,
+    vol.Required("recipient_id"): str,
     vol.Required("first_name"): str,
     vol.Required("last_name"): str,
-    vol.Optional("mobile", default=""): str,
-    vol.Required("email"): str,
+    vol.Optional("mobile",          default=""): str,
+    vol.Optional("email",           default=""): str,
+    vol.Optional("notify_services", default=[]): [str],
 })
 @websocket_api.async_response
 async def ws_update_recipient(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict) -> None:
     recipients = hass.data[DOMAIN]["recipients"]
     for i, r in enumerate(recipients):
-        if r["id"] == msg["id"]:
+        if r["id"] == msg["recipient_id"]:
             recipients[i] = {
-                "id":         msg["id"],
-                "first_name": msg["first_name"],
-                "last_name":  msg["last_name"],
-                "mobile":     msg.get("mobile", ""),
-                "email":      msg["email"],
+                "id":              msg["recipient_id"],
+                "first_name":      msg["first_name"],
+                "last_name":       msg["last_name"],
+                "mobile":          msg.get("mobile", ""),
+                "email":           msg.get("email", ""),
+                "notify_services": msg.get("notify_services", []),
             }
             await _save(hass)
             connection.send_result(msg["id"], recipients[i])
@@ -93,12 +97,12 @@ async def ws_update_recipient(hass: HomeAssistant, connection: websocket_api.Act
 
 @websocket_api.websocket_command({
     vol.Required("type"): "smart_locker/recipients/delete",
-    vol.Required("id"): str,
+    vol.Required("recipient_id"): str,
 })
 @websocket_api.async_response
 async def ws_delete_recipient(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict) -> None:
     hass.data[DOMAIN]["recipients"] = [
-        r for r in hass.data[DOMAIN]["recipients"] if r["id"] != msg["id"]
+        r for r in hass.data[DOMAIN]["recipients"] if r["id"] != msg["recipient_id"]
     ]
     await _save(hass)
     connection.send_result(msg["id"], {"success": True})

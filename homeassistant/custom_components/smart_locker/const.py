@@ -22,8 +22,6 @@ ATTR_LOCKER_ID = "locker_id"
 ATTR_USER = "user"
 
 # Configuration
-CONF_NOTIFY_SERVICE = "notify_service"
-DEFAULT_NOTIFY_SERVICE = "smtp"
 CONF_PIN_SENSOR = "pin_sensor"
 DEFAULT_PIN_SENSOR = "sensor.smart_locker_digicode_code_pin_digicode"
 
