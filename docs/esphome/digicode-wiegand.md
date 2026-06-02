@@ -10,17 +10,41 @@ Home Assistant.
 
 ---
 
+## Mise en mode Wiegand 26
+
+Ce digicode peut fonctionner en WG26 ou WG34. Par défaut il sort du WG26, mais si le mode
+a été changé, la séquence suivante le remet en WG26 :
+
+```
+* 123456 # 0 31 #
+```
+
+(`123456` est le code de programmation par défaut. Le `0 31` sélectionne le mode WG26.)
+
+---
+
 ## Câblage
 
-| Digicode | ESP32 |
-|---|---|
-| VCC | 12V |
-| GND | GND |
-| D0 | GPIO4 |
-| D1 | GPIO5 |
+Les lignes D0/D1 du digicode sont en logique **5V**. L'ESP32 ne tolère que 3.3V en entrée :
+il faut un diviseur de tension sur chaque ligne.
 
-> Les lignes D0/D1 fonctionnent en logique 5V. L'ESP32 tolère généralement ces niveaux en entrée,
-> mais en cas de problème ajouter un diviseur de tension ou un level-shifter.
+```
+D0 (5V) ── R1 1kΩ ──┬── GPIO14
+                     │
+                    R2 2kΩ
+                     │
+                    GND
+```
+
+Même montage pour D1/GPIO27. Le diviseur ramène le 5V à 3.3V sans déformer les pulses
+Wiegand (~50µs).
+
+| Digicode | Câblage intermédiaire | ESP32 |
+|---|---|---|
+| VCC | - | 12V |
+| GND | GND commun | GND |
+| D0 | Diviseur 1kΩ/2kΩ | GPIO14 |
+| D1 | Diviseur 1kΩ/2kΩ | GPIO27 |
 
 ---
 
@@ -58,29 +82,30 @@ wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
 
-# Wiegand - capture touche par touche
+# Wiegand - gere les touches clavier et les badges RFID
 
 wiegand:
   - id: keypad
-    d0: GPIO4
-    d1: GPIO5
-    on_key:
-      - key_collector.collect:
-          id: pin_collector
-          key: !lambda |
-            if (x >= 0 && x <= 9) return ('0' + x);
-            if (x == 10) return '*';
-            if (x == 11) return '#';
-            return 0;
+    d0: GPIO14
+    d1: GPIO27
+    on_tag:
+      # Badge RFID -> ID transmis directement a Home Assistant (x est deja un std::string)
+      - text_sensor.template.publish:
+          id: tag_id
+          state: !lambda 'return x;'
+      - homeassistant.event:
+          event: esphome.tag_scanned
+          data:
+            tag_id: !lambda 'return x;'
 
-# key_collector - assemble les touches en code PIN
+# key_collector se branche sur le wiegand via source_id - pas besoin de on_key
 
 key_collector:
   - id: pin_collector
+    source_id: keypad
     min_length: 4
     max_length: 8
     end_keys: "#"
-    end_key_required: true
     back_keys: "*"
     timeout: 10s
     on_result:
@@ -96,13 +121,17 @@ key_collector:
           id: pin_code
           state: ""
 
-# Expose le dernier code saisi comme entite Home Assistant
+# Capteurs exposes dans Home Assistant
 
 text_sensor:
   - platform: template
-    name: "Code digicode"
+    name: "Code PIN digicode"
     id: pin_code
     icon: "mdi:dialpad"
+  - platform: template
+    name: "Badge RFID"
+    id: tag_id
+    icon: "mdi:card-account-details"
 ```
 
 ### Touches speciales
@@ -117,30 +146,49 @@ text_sensor:
 
 ## Cote Home Assistant
 
-Quand l'utilisateur valide avec `#`, l'evenement `esphome.keypad_code_entered` est fire avec le
-code en data. Une automatisation HA se charge de verifier le code et d'ouvrir le bon casier.
+Deux evenements sont fires selon le mode d'authentification :
+
+| Evenement | Champ data | Declencheur |
+|---|---|---|
+| `esphome.keypad_code_entered` | `code` | Utilisateur valide son PIN avec `#` |
+| `esphome.tag_scanned` | `tag_id` | Badge RFID presente devant le lecteur |
+
+Exemple d'automatisation :
 
 ```yaml
-alias: "Digicode - verification code PIN"
+alias: "Digicode - code PIN ou badge RFID"
 trigger:
   - platform: event
     event_type: esphome.keypad_code_entered
+    id: pin
+  - platform: event
+    event_type: esphome.tag_scanned
+    id: badge
 action:
   - variables:
-      code_saisi: "{{ trigger.event.data.code }}"
-  # Verification et ouverture du casier - voir backend Python
+      identifiant: >
+        {% if trigger.id == 'pin' %}
+          {{ trigger.event.data.code }}
+        {% else %}
+          {{ trigger.event.data.tag_id }}
+        {% endif %}
+  # Verification de l'identifiant et ouverture du casier correspondant
 ```
 
-> La logique de verification est plus propre dans le backend Python.
-> Voir [backend/README.md](../backend/README.md).
+> Relever l'ID d'un badge en le presentant devant le lecteur et en consultant
+> les logs ESPHome ou l'etat de l'entite `text_sensor.badge_rfid` dans HA.
 
 ---
 
 ## Notes
 
-- Certains digicodes ont besoin d'une remise a zero usine pour passer en mode sortie Wiegand 26/34.
-  Consulter la notice du modele si les touches ne sont pas recues par l'ESP32.
-- Le `key_collector` attend `#` pour valider. Si le digicode envoie le PIN complet d'un coup
-  via `on_tag` (comportement de certains modeles), utiliser directement `on_tag` et supprimer
-  le `key_collector`.
-- `text_sensor` publie le code en clair dans Home Assistant. Prevoir de l'effacer apres traitement.
+- Le digicode doit etre en mode WG26 pour que le composant ESPHome fonctionne. Sequence de
+  programmation : `* 123456 # 0 31 #` (voir section ci-dessus).
+- Éviter GPIO0, GPIO2, GPIO5, GPIO12, GPIO15 (strapping pins au boot) et GPIO34-39 (input
+  only, pas de pull-up interne). GPIO14 et GPIO27 sont des choix surs.
+- Les lignes D0/D1 etant en 5V, le diviseur de tension 1kΩ/2kΩ est obligatoire pour
+  proteger les GPIO de l'ESP32 (3.3V max).
+- L'ID de badge est transmis sous forme de chaine dans `x`. Pour l'afficher en hexadecimal :
+  `return str_sprintf("%llX", atoll(x.c_str()));`
+- Les `text_sensor` publient les donnees en clair dans Home Assistant. Prevoir de les effacer
+  apres traitement (publier une chaine vide).

@@ -1,0 +1,81 @@
+assign:
+  name: Assigner un casier
+  description: Assigne un casier à un utilisateur Home Assistant et le passe en état occupé.
+  fields:
+    locker_id:
+      name: Numéro du casier
+      description: Numéro du casier (1 à 8)
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 8
+          mode: box
+    user:
+      name: Utilisateur
+      description: Nom de l'utilisateur Home Assistant
+      required: true
+      selector:
+        text:
+
+unassign:
+  name: Retirer un assigné
+  description: Retire un utilisateur de la liste des assignés du casier. Si la liste devient vide, le casier repasse en libre.
+  fields:
+    locker_id:
+      name: Numéro du casier
+      description: Numéro du casier (1 à 8)
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 8
+          mode: box
+    user:
+      name: Utilisateur
+      description: Nom de l'utilisateur à retirer
+      required: true
+      selector:
+        text:
+
+open:
+  name: Ouvrir un casier
+  description: Déclenche l'impulsion relais pour ouvrir la serrure du casier.
+  fields:
+    locker_id:
+      name: Numéro du casier
+      description: Numéro du casier (1 à 8)
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 8
+          mode: box
+
+notify:
+  name: Notifier l'utilisateur
+  description: Envoie un email à l'utilisateur assigné pour l'informer qu'un colis l'attend.
+  fields:
+    locker_id:
+      name: Numéro du casier
+      description: Numéro du casier (1 à 8)
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 8
+          mode: box
+
+reset:
+  name: Libérer un casier
+  description: Remet le casier en état libre et efface l'utilisateur assigné.
+  fields:
+    locker_id:
+      name: Numéro du casier
+      description: Numéro du casier (1 à 8)
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 8
+          mode: box

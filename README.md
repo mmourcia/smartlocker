@@ -10,7 +10,7 @@ Une personne dépose un colis dans un casier libre, l'affecte à un destinataire
 
 Le support est une étagère **IKEA Kallax 4x2** (8 casiers), chaque case étant équipée d'une porte, d'une serrure solénoïde et d'un anneau LED pour communiquer l'état au gestionnaire comme au destinataire.
 
-Le cerveau du système est un **Raspberry Pi 4** sous Home Assistant OS. Deux cartes ESP32 lui sont connectées en WiFi : une carte 8 relais qui pilote les serrures et lit l'état des portes, et un digicode Wiegand 26 positionné devant le meuble.
+Le cerveau du système est un **mini PC** sous Home Assistant OS, placé dans une baie séparée avec sa propre alimentation. Deux cartes ESP32 lui sont connectées en WiFi : une carte 8 relais qui pilote les serrures et lit l'état des portes, et un digicode Wiegand 26 positionné devant le meuble.
 
 Le système est conçu pour un usage intérieur en environnement de confiance. Pas de sécurité de niveau industriel : l'objectif est la praticité et la traçabilité légère.
 
