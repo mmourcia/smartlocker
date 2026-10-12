@@ -57,6 +57,7 @@ Détails : [dashboard admin](docs/home-assistant/dashboard.md).
 
 Tout ce qu'il faut pour construire et configurer le système :
 
+- **[Mise en service](docs/mise-en-service.md)** - toutes les étapes dans l'ordre, du câblage à la recette
 - [Serrure solénoïde](docs/hardware/serrure.md) - pilotage relais et retour via reed switch
 - [Alimentation](docs/hardware/alimentation.md) - architecture 230V / 12V 20A
 - [Éclairage WLED Gledopto](docs/hardware/wled-gledopto.md) - rubans COB, segments par casier, code couleur

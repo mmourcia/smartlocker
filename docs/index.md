@@ -10,6 +10,8 @@ Schéma source : [architecture.svg](architecture.svg) (SVG éditable dans un éd
 
 ## Table des matières
 
+**[Mise en service](mise-en-service.md)** - toutes les étapes dans l'ordre, du câblage à la recette.
+
 ### Matériel
 - [Serrure solénoïde](hardware/serrure.md) - Pilotage via relais, retour d'état via reed switch
 - [Alimentation](hardware/alimentation.md) - Architecture 230V → 12V/20A
