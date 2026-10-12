@@ -148,8 +148,9 @@ Les cinq types de cartes peuvent aussi être placés sur des vues séparées
 
 ### Carte Destinataires (`smart-locker-recipients-card`)
 
-- **Tableau** : liste des destinataires avec prénom, nom, téléphone, email, services de notification
-  et badge. Défile horizontalement sur téléphone.
+- **Liste** : une fiche par destinataire, triée par nom (prénom et nom, téléphone et email, services
+  de notification, badge). Un destinataire sans service de notification est signalé « Aucune
+  notification ». Lisible sur téléphone sans défilement horizontal.
 - **Boutons** : carte d'identité (enrôler un badge), crayon (modifier), corbeille (supprimer),
   × à côté d'un badge (le retirer), **Ajouter** (formulaire inline).
 - **Formulaire** : 4 champs texte + liste des services `notify.*` disponibles dans HA (cases à cocher).

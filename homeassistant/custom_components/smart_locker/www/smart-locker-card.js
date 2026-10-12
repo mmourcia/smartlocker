@@ -518,7 +518,29 @@ const RCSS = `
     min-width: 0;
   }
 
-  .table-wrap { overflow-x: auto; }
+  /* Liste des destinataires */
+  .plist { display: flex; flex-direction: column; }
+  .plist .empty { text-align: center; color: var(--secondary-text-color); padding: 20px 8px; font-size: 0.85em; }
+  .person {
+    display: flex; align-items: flex-start; gap: 8px;
+    padding: 10px 4px; border-bottom: 1px solid var(--divider-color);
+  }
+  .person:last-child { border-bottom: none; }
+  .p-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+  .p-name { font-weight: 600; font-size: 0.95em; }
+  .p-contact { display: flex; flex-wrap: wrap; gap: 0 12px; font-size: 0.8em; color: var(--secondary-text-color); }
+  .p-contact span { overflow-wrap: anywhere; }
+  .p-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 2px; }
+  .p-warn { font-size: 0.75em; color: #E65100; }
+  .p-badge {
+    display: inline-flex; align-items: center; gap: 3px; font-size: 0.72em; font-family: monospace;
+    padding: 1px 2px 1px 6px; border-radius: 8px; border: 1px solid var(--divider-color);
+    color: var(--primary-text-color);
+  }
+  .p-badge ha-icon { --mdc-icon-size: 13px; color: var(--secondary-text-color); }
+  .p-badge button { all: unset; cursor: pointer; display: flex; padding: 1px; border-radius: 50%; }
+  .p-badge button:hover ha-icon { color: #F44336; }
+  .p-actions { display: flex; flex-shrink: 0; gap: 2px; }
   table { width: 100%; border-collapse: collapse; font-size: 0.83em; }
   th {
     text-align: left;
@@ -583,10 +605,12 @@ const RCSS = `
   .form-title { font-size: 0.88em; font-weight: 600; margin-bottom: 10px; }
   .form-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
     gap: 8px;
     margin-bottom: 10px;
   }
+  .form-grid .field { min-width: 0; }
+  .form-grid .field input { width: 100%; box-sizing: border-box; }
   .field { display: flex; flex-direction: column; gap: 3px; }
   .field label { font-size: 0.75em; color: var(--secondary-text-color); font-weight: 500; }
   .field input {
@@ -695,16 +719,7 @@ class SmartLockerRecipientsCard extends HTMLElement {
         </div>
         <div id="enroll-container"></div>
         <div id="form-container"></div>
-        <div class="table-wrap"><table>
-          <thead>
-            <tr>
-              <th>Prénom</th><th>Nom</th><th>Tél mobile</th><th>Email</th><th>Notifs</th><th>Badge</th><th></th>
-            </tr>
-          </thead>
-          <tbody id="tbody">
-            <tr><td colspan="7" class="empty">Chargement…</td></tr>
-          </tbody>
-        </table></div>
+        <div class="plist" id="tbody"><div class="empty">Chargement…</div></div>
       </ha-card>
     `;
     this.shadowRoot.getElementById('btn-add').onclick = () => this._showForm(null);
@@ -727,34 +742,37 @@ class SmartLockerRecipientsCard extends HTMLElement {
     if (!tbody) return;
     tbody.innerHTML = '';
     if (!this._recipients.length) {
-      tbody.innerHTML = '<tr><td colspan="7" class="empty">Aucun destinataire — cliquez sur Ajouter.</td></tr>';
+      tbody.innerHTML = '<div class="empty">Aucun destinataire — cliquez sur Ajouter.</div>';
       return;
     }
-    for (const r of this._recipients) {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td>${this._esc(r.first_name)}</td>
-        <td>${this._esc(r.last_name)}</td>
-        <td>${this._esc(r.mobile || '—')}</td>
-        <td>${this._esc(r.email || '—')}</td>
-        <td>
-          <div class="svc-badges">
-            ${(r.notify_services || []).length
-              ? (r.notify_services || []).map(s => `<span class="svc-badge">${this._esc(s)}</span>`).join('')
-              : '<span class="svc-badge-none">—</span>'}
-          </div>
-        </td>
-        <td>
-          <div class="badge-cell">
+    // Une fiche par destinataire : lisible à toutes les largeurs (pas de tableau)
+    const sorted = [...this._recipients].sort((a, b) =>
+      `${a.last_name} ${a.first_name}`.localeCompare(`${b.last_name} ${b.first_name}`));
+    for (const r of sorted) {
+      const row = document.createElement('div');
+      row.className = 'person';
+      const contact = [r.mobile, r.email].filter(Boolean).map(v => `<span>${this._esc(v)}</span>`).join('');
+      const services = r.notify_services || [];
+      row.innerHTML = `
+        <div class="p-main">
+          <div class="p-name">${this._esc(r.first_name)} ${this._esc(r.last_name)}</div>
+          <div class="p-contact">${contact || '<span class="svc-badge-none">Aucun contact</span>'}</div>
+          <div class="p-tags">
+            ${services.length
+              ? services.map(s => `<span class="svc-badge">${this._esc(s)}</span>`).join('')
+              : '<span class="p-warn">Aucune notification</span>'}
             ${r.badge_id
-              ? `<span class="badge-id">${this._esc(r.badge_id)}</span>
-                 <button class="r-icon-btn del" data-id="${r.id}" data-action="unbadge" title="Retirer le badge">
-                   <ha-icon icon="mdi:close"></ha-icon></button>`
-              : '<span class="svc-badge-none">—</span>'}
+              ? `<span class="p-badge" title="Badge ${this._esc(r.badge_id)}">
+                   <ha-icon icon="mdi:card-account-details"></ha-icon>${this._esc(r.badge_id)}
+                   <button data-id="${r.id}" data-action="unbadge" title="Retirer le badge" aria-label="Retirer le badge">
+                     <ha-icon icon="mdi:close"></ha-icon></button>
+                 </span>`
+              : ''}
           </div>
-        </td>
-        <td class="col-actions">
-          <button class="r-icon-btn" data-id="${r.id}" data-action="enroll" title="Enrôler un badge (le passer devant le lecteur)">
+        </div>
+        <div class="p-actions">
+          <button class="r-icon-btn" data-id="${r.id}" data-action="enroll"
+                  title="${r.badge_id ? 'Changer de badge' : 'Enrôler un badge'} (le passer devant le lecteur)">
             <ha-icon icon="mdi:card-account-details-outline"></ha-icon>
           </button>
           <button class="r-icon-btn" data-id="${r.id}" data-action="edit" title="Modifier">
@@ -763,9 +781,9 @@ class SmartLockerRecipientsCard extends HTMLElement {
           <button class="r-icon-btn del" data-id="${r.id}" data-action="delete" title="Supprimer">
             <ha-icon icon="mdi:delete-outline"></ha-icon>
           </button>
-        </td>
+        </div>
       `;
-      tbody.appendChild(tr);
+      tbody.appendChild(row);
     }
     tbody.querySelectorAll('[data-action="edit"]').forEach(btn =>
       btn.addEventListener('click', () => {
