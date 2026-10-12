@@ -66,6 +66,7 @@ Tout ce qu'il faut pour construire et configurer le système :
 - [Home Assistant - Intégrations](docs/home-assistant/integrations.md) - entités, services, notifications
 - [Home Assistant - Dashboard admin](docs/home-assistant/dashboard.md) - installation du composant, cartes Lovelace
 - [Budget](docs/budget.md)
+- [Fiche technique à imprimer](docs/fiche/fiche-technique.pdf) - câblage et dépannage, recto-verso A4
 
 ---
 
