@@ -5,8 +5,6 @@ achetés ailleurs. Montants en euros.
 
 ## Coût du système
 
-Ce qui est installé dans le meuble.
-
 | Poste | Qté | Source | TTC |
 |---|---|---|---|
 | Mini PC Home Assistant (NiPoGi Pinova P1, Ryzen 3250U, 8 Go / 256 Go) | 1 | Amazon | 219,00 |
@@ -26,32 +24,13 @@ Ce qui est installé dans le meuble.
 | Blocs porte Kallax | 8 | Hors Amazon (estimé) | 140,00 |
 | Filament 3D (gabarits, bague de copiage) | - | Hors Amazon (estimé) | ~5,00 |
 | Bouton d'urgence | 1 | Hors Amazon (estimé) | ~2,00 |
-| **Total système** | | | **~980,00** |
+| **Total** | | | **~980,00** |
 
 Soit **~140 € par casier** utile (7 casiers, la case 3 étant le compartiment technique).
 
-Dont commandes Amazon : 708,07 € TTC (626,25 € HT). Les montants hors Amazon sont repris du
-budget initial et restent à confirmer.
-
-## Achats non utilisés
-
-| Article | Qté | TTC | Raison |
-|---|---|---|---|
-| Carte relais ESP32 LC-Relay-ESP32-8R-D5 | 2 | 41,98 | L'une a grillé ; l'autre est inutilisable (colle chaude sur les broches des reed switches) |
-| Alimentation QWORK 12V 20A 240W | 1 | 18,99 | Remplacée par la Mean Well XDR-240-12 |
-| **Total** | | **60,97** | |
-
-## Total dépensé
-
-| | TTC |
-|---|---|
-| Commandes Amazon | 769,04 |
-| Hors Amazon (estimé) | ~272,00 |
-| **Total** | **~1 041,00** |
-| dont système installé | ~980,00 |
-| dont achats non utilisés | 60,97 |
-
-TVA des commandes Amazon : 91,99 € (le mini PC, vendu par un vendeur tiers, est facturé sans TVA).
+Dont commandes Amazon : 708,07 € TTC (626,25 € HT, TVA 81,82 € ; le mini PC, vendu par un vendeur
+tiers, est facturé sans TVA). Les montants hors Amazon sont repris du budget initial et restent à
+confirmer.
 
 ## Remarques
 
@@ -64,10 +43,7 @@ TVA des commandes Amazon : 91,99 € (le mini PC, vendu par un vendeur tiers, es
 | Date | Commande | Article | Qté | HT | TVA | TTC |
 |---|---|---|---|---|---|---|
 | 20/05 | 407-9929121-3206748 | Serrure solénoïde 12V | 1 | 12,49 | 2,50 | 14,99 |
-| 20/05 | 407-9929121-3206748 | Carte relais ESP32 LC-Relay-ESP32-8R-D5 | 1 | 17,49 | 3,50 | 20,99 |
-| 20/05 | 407-9929121-3206748 | Alimentation QWORK 12V 20A 240W | 1 | 15,82 | 3,17 | 18,99 |
 | 23/05 | 407-9284894-3458720 | Adaptateur USB-UART TTL CH340G | 1 | 5,82 | 1,17 | 6,99 |
-| 27/05 | 407-1590496-0017148 | Carte relais ESP32 LC-Relay-ESP32-8R-D5 | 1 | 17,49 | 3,50 | 20,99 |
 | 28/05 | 407-5306304-2139539 | Digicode RFID ReaIOKbii S20 + 10 porte-clés EM4100 | 1 | 18,96 | 3,79 | 22,75 |
 | 29/05 | 407-9888739-5418768 | Diodes 1N4004 (lot de 150) | 1 | 5,82 | 1,17 | 6,99 |
 | 29/05 | 407-9888739-5418768 | Wago 221-420 (lot de 5) | 1 | 10,24 | 2,05 | 12,29 |
@@ -92,4 +68,4 @@ TVA des commandes Amazon : 91,99 € (le mini PC, vendu par un vendeur tiers, es
 | 07/10 | 407-1748390-2738758 | Carte relais ESP32 LC-Relay-ESP32-8R-D5 | 1 | 17,49 | 3,50 | 20,99 |
 | 07/10 | 407-9232963-3662766 | Contrôleur WLED Gledopto GL-C-017WL-D | 1 | 23,92 | 5,09 | 29,01 |
 | 08/10 | 407-5778220-2773124 | Serre-câbles avec étiquettes (250) | 1 | 11,66 | 2,33 | 13,99 |
-| **Total** | | | | **677,05** | **91,99** | **769,04** |
+| **Total** | | | | **626,25** | **81,82** | **708,07** |
