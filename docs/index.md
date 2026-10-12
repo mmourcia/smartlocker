@@ -2,9 +2,9 @@
 
 ## Architecture
 
-<img src="architecture.png" width="860"/>
+<img src="architecture.svg" width="860"/>
 
-Le schéma source est disponible dans [architecture.drawio](architecture.drawio) (ouvrable sur [diagrams.net](https://app.diagrams.net)).
+Schéma source : [architecture.svg](architecture.svg) (SVG éditable dans un éditeur de texte ou Inkscape).
 
 ---
 
