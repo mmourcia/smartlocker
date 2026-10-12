@@ -4,7 +4,9 @@ from datetime import datetime
 
 from homeassistant.helpers.entity import Entity
 
-from .const import DOMAIN, STATE_FREE, STATE_OCCUPIED, STATE_WAITING, STATE_RETRIEVED, LOCKER_STATES
+from .const import (
+    DOMAIN, STATE_FREE, STATE_OCCUPIED, STATE_WAITING, STATE_RETRIEVED, STATE_ERROR, LOCKER_STATES,
+)
 
 DELETED_RECIPIENT = "Destinataire supprimé"
 
@@ -127,8 +129,9 @@ class LockerEntity(Entity):
         self._assigned = [r for r in self._assigned if r != recipient_id]
         self._notified_at.pop(recipient_id, None)
         if not self._assigned:
-            self._state = STATE_FREE
             self._pin_code = None
+            if self._state != STATE_ERROR:
+                self._state = STATE_FREE
         self._changed()
 
     def mark_user_notified(self, recipient_id: str) -> None:
@@ -145,11 +148,31 @@ class LockerEntity(Entity):
         self._changed()
 
     def reset(self) -> None:
-        self._state = STATE_FREE
+        """Vide le casier. Un casier hors service le reste (cf. set_out_of_service)."""
+        if self._state != STATE_ERROR:
+            self._state = STATE_FREE
         self._assigned = []
         self._pin_code = None
         self._retrieved_at = None
         self._notified_at = {}
+        self._changed()
+
+    @property
+    def out_of_service(self) -> bool:
+        return self._state == STATE_ERROR
+
+    def set_out_of_service(self, enabled: bool) -> None:
+        """Hors service : le contenu (PIN, assignations) est conserve mais rien n'ouvre le casier.
+        A la remise en service, l'etat est deduit du contenu."""
+        if enabled:
+            self._state = STATE_ERROR
+        elif self._state == STATE_ERROR:
+            if self._notified_at:
+                self._state = STATE_WAITING
+            elif self._assigned:
+                self._state = STATE_OCCUPIED
+            else:
+                self._state = STATE_FREE
         self._changed()
 
     def refresh(self) -> None:

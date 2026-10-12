@@ -209,7 +209,8 @@ avec ses segments configurés (voir [Éclairage WLED](../hardware/wled-gledopto.
 | Badges utilisateurs | Un badge par destinataire assigné, avec bouton × pour retirer. Affiche l'icône 🔔 et l'heure si une notification a été envoyée. |
 | **Ouvrir** | Impulsion relais pour déposer ou vérifier. **Ne change pas l'état** du casier |
 | **Notifier** | Envoie la notification avec le code PIN. Un destinataire déjà notifié est ignoré (réinitialisé à la libération du casier). |
-| **Libérer** | Remet le casier à l'état Libre, efface PIN et assignations (automatique après récupération) |
+| **Libérer** | Remet le casier à l'état Libre, efface PIN et assignations (automatique après récupération). Un casier hors service le reste |
+| 🔧 (clé) | Met le casier **hors service** (confirmation demandée) ou le remet en service. Hors service : rouge fixe, PIN et badge inopérants, **Notifier** et l'assignation sont désactivés. Le contenu est conservé : à la remise en service, le casier redevient libre, occupé ou en attente selon ce qu'il contient |
 | Dropdown + ✚ | Assigner un destinataire (liste issue de la carte Destinataires) |
 
 ### États métier
@@ -220,7 +221,7 @@ avec ses segments configurés (voir [Éclairage WLED](../hardware/wled-gledopto.
 | Occupé | Bleu | Après assignation d'un destinataire |
 | En attente | Orange | Après envoi de la notification |
 | Récupéré | Cyan | Porte ouverte après un bon PIN ou badge, jusqu'à sa refermeture |
-| Hors service | Rouge | Manuel |
+| Hors service | Rouge | Bouton 🔧 de la carte (serrure en panne, maintenance) |
 
 ### Flux de traitement d'un colis
 

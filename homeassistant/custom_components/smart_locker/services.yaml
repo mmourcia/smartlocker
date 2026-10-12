@@ -91,3 +91,23 @@ reset:
           min: 1
           max: 8
           mode: box
+
+set_out_of_service:
+  name: Hors service
+  description: Met un casier hors service (rouge fixe, PIN et badge inopérants, assignation et notification refusées) ou le remet en service. Le contenu du casier est conservé.
+  fields:
+    locker_id:
+      name: Numéro du casier
+      description: Numéro du casier (1, 2, 4 à 8 — le 3 est le compartiment technique)
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 8
+          mode: box
+    out_of_service:
+      name: Hors service
+      description: true pour mettre hors service, false pour remettre en service
+      required: true
+      selector:
+        boolean:

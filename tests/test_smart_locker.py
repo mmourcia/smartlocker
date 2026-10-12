@@ -304,3 +304,45 @@ async def test_door_not_opened_and_admin_open(hass, setup):
     await hass.services.async_call("smart_locker", "open", {"locker_id": 1}, blocking=True)
     assert presses[-1].data["entity_id"] == ["button.smart_locker_relais_ouvrir_casier_1"]
     assert hass.states.get("smart_locker.casier_1").state == "libre"
+
+
+async def test_out_of_service(hass, aioclient_mock, setup):
+    presses = setup
+    from homeassistant.exceptions import ServiceValidationError
+    await hass.services.async_call("smart_locker", "assign", {"locker_id": 5, "recipient_id": "r-jean"}, blocking=True)
+    pin = hass.states.get("smart_locker.casier_5").attributes["pin_code"]
+    await hass.services.async_call("smart_locker", "set_out_of_service", {"locker_id": 5, "out_of_service": True}, blocking=True)
+    st = hass.states.get("smart_locker.casier_5")
+    assert st.state == "hors_service" and st.attributes["pin_code"] == pin, "contenu conserve"
+
+    # PIN inoperant (rouge), assignation et notification refusees
+    hass.bus.async_fire("esphome.keypad_code_entered", {"code": pin}); await hass.async_block_till_done()
+    assert not presses
+    assert segs(last(aioclient_mock))[5] == ((255, 0, 0), 1)
+    for svc, data in (("assign", {"recipient_id": "r-jean"}), ("notify", {})):
+        with pytest.raises(ServiceValidationError):
+            await hass.services.async_call("smart_locker", svc, {"locker_id": 5, **data}, blocking=True)
+
+    # Rouge fixe une fois le clignotement d'erreur termine
+    CLOCK[0] += 4; async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=4)); await hass.async_block_till_done()
+    assert segs(last(aioclient_mock))[5] == ((255, 0, 0), 0)
+
+    # Liberer vide le casier mais le laisse hors service
+    await hass.services.async_call("smart_locker", "reset", {"locker_id": 5}, blocking=True)
+    st = hass.states.get("smart_locker.casier_5")
+    assert st.state == "hors_service" and "pin_code" not in st.attributes
+
+    # Remise en service : etat deduit du contenu (vide -> libre)
+    await hass.services.async_call("smart_locker", "set_out_of_service", {"locker_id": 5, "out_of_service": False}, blocking=True)
+    assert hass.states.get("smart_locker.casier_5").state == "libre"
+
+    # Avec un colis en attente : remis en service -> en attente, PIN de nouveau valide
+    await hass.services.async_call("smart_locker", "assign", {"locker_id": 6, "recipient_id": "r-jean"}, blocking=True)
+    hass.data["smart_locker"]["lockers"][6].mark_user_notified("r-jean")
+    hass.data["smart_locker"]["lockers"][6].notify_sent()
+    for flag in (True, False):
+        await hass.services.async_call("smart_locker", "set_out_of_service", {"locker_id": 6, "out_of_service": flag}, blocking=True)
+    assert hass.states.get("smart_locker.casier_6").state == "en_attente"
+    pin6 = hass.states.get("smart_locker.casier_6").attributes["pin_code"]
+    hass.bus.async_fire("esphome.keypad_code_entered", {"code": pin6}); await hass.async_block_till_done()
+    assert presses[-1].data["entity_id"] == ["button.smart_locker_relais_ouvrir_casier_6"]

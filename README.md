@@ -50,7 +50,6 @@ Détails : [dashboard admin](docs/home-assistant/dashboard.md).
 | [`esphome/`](esphome/) | Configurations ESPHome (carte relais, digicode) + modèle de `secrets.yaml` |
 | [`docs/`](docs/index.md) | Documentation matérielle et logicielle |
 | [`wled/`](wled/) | Sauvegarde de la configuration et des presets du contrôleur WLED |
-| [`3d/`](3d/) | Gabarit de fraisage (anneaux LED, abandonnés), bague de copiage |
 
 ---
 
@@ -58,6 +57,7 @@ Détails : [dashboard admin](docs/home-assistant/dashboard.md).
 
 Tout ce qu'il faut pour construire et configurer le système :
 
+- **[Mise en service](docs/mise-en-service.md)** - toutes les étapes dans l'ordre, du câblage à la recette
 - [Serrure solénoïde](docs/hardware/serrure.md) - pilotage relais et retour via reed switch
 - [Alimentation](docs/hardware/alimentation.md) - architecture 230V / 12V 20A
 - [Éclairage WLED Gledopto](docs/hardware/wled-gledopto.md) - rubans COB, segments par casier, code couleur
@@ -70,22 +70,6 @@ Tout ce qu'il faut pour construire et configurer le système :
 
 ---
 
-## Roadmap
-
-| Statut | Sujet |
-|---|---|
-| ✅ | Ouverture des serrures et lecture des portes (ESPHome) |
-| ✅ | Digicode : PIN 6 chiffres, ouverture automatique du bon casier |
-| ✅ | Gestion des destinataires et notifications email / SMS / app mobile |
-| ✅ | Éclairage WLED selon l'état des casiers, allumé sur activité digicode |
-| ✅ | Retour visuel code correct / incorrect, alerte porte restée ouverte |
-| ✅ | Badges RFID : enrôlement depuis le lecteur, ouverture de tous les colis du destinataire |
-| ✅ | Messages (titre, SMS, email) personnalisables par templates |
-| ✅ | Casiers conservés après un redémarrage de HA ou une coupure de courant |
-| ✅ | Récupération confirmée par l'ouverture de la porte, libération automatique à la fermeture |
-
----
-
 ## Tests
 
 Tests du custom component dans un Home Assistant de test (WLED simulé) :
@@ -94,3 +78,13 @@ Tests du custom component dans un Home Assistant de test (WLED simulé) :
 pip install -r requirements_test.txt
 pytest
 ```
+
+---
+
+## Licence
+
+© 2026 Mikael Mourcia. Ce projet (code, configurations et documentation) est publié sous licence
+[Creative Commons Attribution - Pas d'Utilisation Commerciale - Partage dans les Mêmes Conditions 4.0
+International (CC BY-NC-SA 4.0)](https://creativecommons.org/licenses/by-nc-sa/4.0/deed.fr) :
+réutilisation et modification libres en citant l'auteur, sans usage commercial, et les dérivés
+sont partagés sous la même licence. Texte complet : [LICENSE](LICENSE).

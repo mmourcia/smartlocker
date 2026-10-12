@@ -121,7 +121,7 @@ Titre, texte et HTML de l'email sont des templates éditables dans la carte **Me
 | `occupé` | Destinataire(s) assigné(s), PIN généré |
 | `en_attente` | Notification envoyée, colis attendu |
 | `récupéré` | Porte ouverte après un bon PIN / badge ; le casier repasse `libre` à la fermeture |
-| `hors_service` | Casier indisponible |
+| `hors_service` | Casier indisponible (serrure en panne…) : rouge fixe, PIN et badge inopérants, assignation et notification refusées |
 
 `locker_id` accepte 1, 2, 4, 5, 6, 7 ou 8 ; le 3 est refusé (compartiment technique).
 
@@ -216,7 +216,8 @@ Code couleur détaillé : [Éclairage WLED](../hardware/wled-gledopto.md#code-co
 | `smart_locker.unassign` | `locker_id`, `recipient_id` **ou** `user` | Retire un destinataire ; casier `libre` s'il n'en reste aucun |
 | `smart_locker.notify` | `locker_id` | Envoie la notification avec PIN |
 | `smart_locker.open` | `locker_id` | Impulsion relais (dépôt, vérification), sans changement d'état |
-| `smart_locker.reset` | `locker_id` | Remet à libre, efface PIN et assignations |
+| `smart_locker.reset` | `locker_id` | Efface PIN et assignations, remet à libre (un casier hors service le reste) |
+| `smart_locker.set_out_of_service` | `locker_id`, `out_of_service` (true / false) | Met hors service ou remet en service ; le contenu est conservé et l'état est recalculé à la remise en service |
 
 Un destinataire inconnu est refusé avec une erreur.
 
