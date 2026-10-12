@@ -14,7 +14,6 @@ Le schéma source est disponible dans [architecture.drawio](architecture.drawio)
 - [Serrure solénoïde](hardware/serrure.md) - Pilotage via relais, retour d'état via reed switch
 - [Alimentation](hardware/alimentation.md) - Architecture 230V → 12V/20A
 - [Éclairage WLED Gledopto](hardware/wled-gledopto.md) - Rubans COB, un segment par casier, code couleur
-- [Fraisage logements LED](hardware/fraisage.md) - *Abandonné* (anneaux LED remplacés par les rubans)
 
 ### ESPHome
 - [Carte relais LC-Relay-ESP32-8R-D5](esphome/carte-relais.md) - 7 serrures, 7 reed switches (case 3 = compartiment technique)

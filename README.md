@@ -50,7 +50,6 @@ Détails : [dashboard admin](docs/home-assistant/dashboard.md).
 | [`esphome/`](esphome/) | Configurations ESPHome (carte relais, digicode) + modèle de `secrets.yaml` |
 | [`docs/`](docs/index.md) | Documentation matérielle et logicielle |
 | [`wled/`](wled/) | Sauvegarde de la configuration et des presets du contrôleur WLED |
-| [`3d/`](3d/) | Gabarit de fraisage (anneaux LED, abandonnés), bague de copiage |
 
 ---
 

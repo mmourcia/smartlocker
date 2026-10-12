@@ -21,10 +21,9 @@ achetés ailleurs. Montants en euros.
 | Adaptateur USB-UART TTL CH340G (flash carte relais) | 1 | Amazon | 6,99 |
 | Meuble IKEA Kallax 4x2 | 1 | Hors Amazon (estimé) | 75,00 |
 | Blocs porte Kallax | 8 | Hors Amazon (estimé) | 140,00 |
-| Filament 3D (gabarits, bague de copiage) | - | Hors Amazon (estimé) | ~5,00 |
-| **Total** | | | **~971,00** |
+| **Total** | | | **~966,00** |
 
-Soit **~139 € par casier** utile (7 casiers, la case 3 étant le compartiment technique).
+Soit **~138 € par casier** utile (7 casiers, la case 3 étant le compartiment technique).
 
 Dont commandes Amazon : 701,08 € TTC (620,43 € HT, TVA 80,65 € ; le mini PC, vendu par un vendeur
 tiers, est facturé sans TVA). Les montants hors Amazon sont repris du budget initial et restent à
