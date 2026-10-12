@@ -8,7 +8,8 @@ Alimentation choisie : **Mean Well XDR-240-12** - 12V / 20A / 240W, format rail 
 
 | Source | Consommateur |
 |---|---|
-| Mean Well XDR-240-12 (12V / 20A) | Cartes ESP32, serrures x7, éclairage LED, digicode |
+| Mean Well XDR-240-12 (12V / 20A) | Carte relais ESP32, serrures x7, contrôleur et rubans LED, clavier du digicode |
+| Convertisseur 12V → 5V 15A (alimenté par la Mean Well) | ESP32 du digicode |
 
 ## Pourquoi 20A ?
 
@@ -16,6 +17,7 @@ Alimentation choisie : **Mean Well XDR-240-12** - 12V / 20A / 240W, format rail 
 |---|---|
 | Solénoïdes x7 (inrush simultané max) | 7 x 1 A = 7 A |
 | Carte LC-Relay-ESP32-8R-D5 | ~0,5 A |
+| ESP32 du digicode (via convertisseur 5V) + clavier | ~0,3 A |
 | Rubans COB adressables x2, 53 pixels (limité à 3 A par WLED) | ≤ 3 A |
 | **Total crête théorique** | **~11 A** |
 
@@ -23,7 +25,9 @@ En pratique les solénoïdes fonctionnent en impulsionnel (400 ms) et ne sont ja
 
 ## Distribution 12V
 
-Le transformateur dispose directement de plusieurs paires de bornes V+/V- en sortie. Chaque consommateur (serrures, contrôleur LED, cartes ESP32) est raccordé directement sur ces bornes avec du câble 2x0,5 mm².
+Le transformateur dispose directement de plusieurs paires de bornes V+/V- en sortie. Chaque consommateur (serrures, contrôleur LED, carte relais, clavier du digicode, convertisseur 5V) est raccordé directement sur ces bornes avec du câble 2x0,5 mm².
+
+L'ESP32 du digicode n'accepte pas le 12V : il est alimenté en 5V par un convertisseur abaisseur 12V → 5V (15A, très largement surdimensionné pour un ESP32 mais peu coûteux), branché sur les bornes 12V de la Mean Well.
 
 ## Bouton d'urgence
 
