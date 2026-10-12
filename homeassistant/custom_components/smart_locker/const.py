@@ -20,6 +20,8 @@ SERVICE_UNASSIGN = "unassign"
 SERVICE_OPEN = "open"
 SERVICE_NOTIFY = "notify"
 SERVICE_RESET = "reset"
+SERVICE_SET_OUT_OF_SERVICE = "set_out_of_service"
+ATTR_OUT_OF_SERVICE = "out_of_service"
 
 # Attributs de service
 ATTR_LOCKER_ID = "locker_id"

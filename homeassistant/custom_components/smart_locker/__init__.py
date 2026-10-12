@@ -19,6 +19,8 @@ from .const import (
     SERVICE_OPEN,
     SERVICE_NOTIFY,
     SERVICE_RESET,
+    SERVICE_SET_OUT_OF_SERVICE,
+    ATTR_OUT_OF_SERVICE,
     ATTR_LOCKER_ID,
     ATTR_USER,
     ATTR_RECIPIENT_ID,
@@ -257,8 +259,15 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
                 return r["id"]
         raise ServiceValidationError(f"Destinataire '{name}' introuvable")
 
+    def check_in_service(locker) -> None:
+        if locker.out_of_service:
+            raise ServiceValidationError(
+                f"Casier {locker.locker_id} hors service - le remettre en service d'abord"
+            )
+
     async def handle_assign(call: ServiceCall) -> None:
         locker_id = call.data[ATTR_LOCKER_ID]
+        check_in_service(lockers[locker_id])
         rid = resolve_recipient(call)
         lockers[locker_id].assign(rid)
         _LOGGER.info("Casier %s assigne a %s", locker_id, rid)
@@ -285,6 +294,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         if not locker:
             _LOGGER.error("Casier %s introuvable", locker_id)
             return
+        check_in_service(locker)
         assigned = locker.assigned_ids
         if not assigned:
             _LOGGER.warning("Casier %s : aucun utilisateur assigne", locker_id)
@@ -378,6 +388,12 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         locker.reset()
         _LOGGER.info("Casier %s remis a libre", locker_id)
 
+    async def handle_set_out_of_service(call: ServiceCall) -> None:
+        locker_id = call.data[ATTR_LOCKER_ID]
+        enabled = call.data[ATTR_OUT_OF_SERVICE]
+        lockers[locker_id].set_out_of_service(enabled)
+        _LOGGER.info("Casier %s %s", locker_id, "hors service" if enabled else "remis en service")
+
     locker_id_schema = vol.All(vol.Coerce(int), vol.In(LOCKER_IDS))
     user_schema = vol.All(
         vol.Schema({
@@ -394,6 +410,11 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         schema=vol.Schema({vol.Required(ATTR_LOCKER_ID): locker_id_schema}))
     hass.services.async_register(DOMAIN, SERVICE_NOTIFY, handle_notify,
         schema=vol.Schema({vol.Required(ATTR_LOCKER_ID): locker_id_schema}))
+    hass.services.async_register(DOMAIN, SERVICE_SET_OUT_OF_SERVICE, handle_set_out_of_service,
+        schema=vol.Schema({
+            vol.Required(ATTR_LOCKER_ID): locker_id_schema,
+            vol.Required(ATTR_OUT_OF_SERVICE): cv.boolean,
+        }))
     hass.services.async_register(DOMAIN, SERVICE_RESET,  handle_reset,
         schema=vol.Schema({vol.Required(ATTR_LOCKER_ID): locker_id_schema}))
 

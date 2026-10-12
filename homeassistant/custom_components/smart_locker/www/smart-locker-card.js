@@ -139,6 +139,9 @@ const CSS = `
   }
   .btn ha-icon { --mdc-icon-size: 15px; color: inherit; }
   .btn:hover { background: var(--primary-color); color: white; }
+  .btn.icon-only { flex: 0 0 auto; padding: 5px 8px; }
+  .btn.hs-on { background: #F4433622; color: #F44336; }
+  .btn:disabled, select:disabled, .icon-btn:disabled { opacity: 0.4; pointer-events: none; }
 
   /* Ligne d'assignation */
   .assign-row {
@@ -260,6 +263,9 @@ class SmartLockerCard extends HTMLElement {
           <button class="btn" id="btn-reset">
             <ha-icon icon="mdi:lock-reset"></ha-icon>Libérer
           </button>
+          <button class="btn icon-only" id="btn-hs" title="Mettre hors service">
+            <ha-icon icon="mdi:wrench"></ha-icon>
+          </button>
         </div>
         <div class="assign-row">
           <select id="user-select">
@@ -276,6 +282,16 @@ class SmartLockerCard extends HTMLElement {
     sr.getElementById('btn-notify').onclick = () => this._svc('notify', {});
     sr.getElementById('btn-reset').onclick  = () => this._svc('reset',  {});
     sr.getElementById('btn-assign').onclick = () => this._assignUser();
+    sr.getElementById('btn-hs').onclick     = () => this._toggleOutOfService();
+  }
+
+  _toggleOutOfService() {
+    const entity = this._hass && this._hass.states[this._entityId];
+    if (!entity) return;
+    const hs = entity.state === 'hors_service';
+    if (!hs && !confirm(`Mettre le casier ${this._lockerId} hors service ?\n`
+      + 'Le PIN et le badge n\'ouvriront plus ce casier, il ne pourra plus être assigné.')) return;
+    this._svc('set_out_of_service', { out_of_service: !hs });
   }
 
   set hass(hass) {
@@ -317,6 +333,14 @@ class SmartLockerCard extends HTMLElement {
 
     const state = entity.state;
     const users = entity.attributes.assigned_recipients || [];
+
+    // Hors service : bouton bascule, notification et assignation désactivées
+    const hs = state === 'hors_service';
+    const hsBtn = sr.getElementById('btn-hs');
+    hsBtn.classList.toggle('hs-on', hs);
+    hsBtn.title = hs ? 'Remettre en service' : 'Mettre hors service';
+    hsBtn.querySelector('ha-icon').setAttribute('icon', hs ? 'mdi:wrench-check' : 'mdi:wrench');
+    for (const id of ['btn-notify', 'user-select', 'btn-assign']) sr.getElementById(id).disabled = hs;
     const cfg = LOCKER_STATES[state] || { color: '#9E9E9E', icon: 'mdi:help', label: state };
 
     // Etat métier
