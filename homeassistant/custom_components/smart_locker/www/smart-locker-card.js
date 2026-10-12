@@ -1339,8 +1339,9 @@ window.customCards.push({
 });
 
 // ─── Carte vue d'ensemble de tous les casiers ───────────────────────────────
-// Grille compacte (2 colonnes sur téléphone, plus sur grand écran). Un tap sur un
-// casier ouvre son détail sous la grille, avec les seules actions utiles à son état.
+// Grille calquée sur le meuble (Kallax 4x2 debout) : impairs à gauche, pairs à droite,
+// la case technique garde sa place. Un tap sur un casier ouvre son détail sous la
+// grille, avec les seules actions utiles à son état.
 // Couleurs alignées sur les LED du meuble (bleu = colis, orange = porte ouverte).
 
 const OVERVIEW_STATES = {
@@ -1359,7 +1360,15 @@ const OCSS = `
   .head h2 { font-size: 1.05em; font-weight: 600; margin: 0; }
   .summary { font-size: 0.78em; color: var(--secondary-text-color); }
 
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 8px; }
+  .grid { display: grid; grid-template-columns: repeat(var(--cols, 2), minmax(0, 1fr)); gap: 8px;
+          max-width: 560px; margin: 0 auto; }
+  .tile.tech {
+    cursor: default; border: 1px dashed var(--divider-color); border-left: 5px solid var(--divider-color);
+    background: var(--secondary-background-color); justify-content: center;
+  }
+  .tile.tech .num { color: var(--secondary-text-color); }
+  .tile.tech .state { color: var(--secondary-text-color); font-weight: 500; }
+  .detail { max-width: 560px; margin-left: auto; margin-right: auto; box-sizing: border-box; }
   .tile {
     all: unset; box-sizing: border-box; cursor: pointer; min-width: 0;
     display: flex; flex-direction: column; gap: 3px;
@@ -1448,7 +1457,11 @@ class SmartLockerLockersCard extends HTMLElement {
 
   setConfig(config) {
     this._config = config || {};
-    this._ids = (this._config.lockers || [1, 2, 4, 5, 6, 7, 8]).map(Number);
+    // Cases du meuble dans l'ordre de lecture (rangée par rangée), et cases techniques
+    this._cases = this._config.cases || 8;
+    this._columns = this._config.columns || 2;
+    this._technical = (this._config.technical || [3]).map(Number);
+    this._ids = [...Array(this._cases).keys()].map(i => i + 1).filter(i => !this._technical.includes(i));
     this._title = this._config.title ?? 'Casiers';
     this._sig = '';
     if (this._hass) this._render();
@@ -1508,12 +1521,16 @@ class SmartLockerLockersCard extends HTMLElement {
           <h2>${this._esc(this._title)}</h2>
           <span class="summary">${busy} colis · ${free} libre${free > 1 ? 's' : ''}${toNotify ? ` · ${toNotify} à notifier` : ''}${down ? ` · ${down} HS` : ''}</span>
         </div>
-        <div class="grid">${lockers.map(l => this._tile(l)).join('')}</div>
+        <div class="grid" style="--cols:${this._columns}">${[...Array(this._cases).keys()].map(i => i + 1).map(i =>
+          this._technical.includes(i)
+            ? `<div class="tile tech" aria-label="Case ${i}, compartiment technique"><div class="top"><span class="num">${i}</span></div><div class="state">Technique</div></div>`
+            : (lockers.find(l => l.id === i) ? this._tile(lockers.find(l => l.id === i))
+              : `<div class="tile tech"><div class="top"><span class="num">${i}</span></div><div class="state">Indisponible</div></div>`)).join('')}</div>
         ${sel ? this._detail(sel) : ''}
       </ha-card>`;
 
     const sr = this.shadowRoot;
-    sr.querySelectorAll('.tile').forEach(t => t.onclick = () => {
+    sr.querySelectorAll('.tile[data-id]').forEach(t => t.onclick = () => {
       const id = Number(t.dataset.id);
       this._selected = this._selected === id ? null : id;
       this._error = '';

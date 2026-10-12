@@ -122,13 +122,16 @@ Et, sur la vue principale, la vue d'ensemble des casiers :
 
 ```yaml
 type: custom:smart-locker-lockers-card
-# Options :
-# title: Casiers             # titre affiché (vide pour le masquer)
-# lockers: [1, 2, 4, 5, 6, 7, 8]
+# Options (valeurs par défaut) :
+# title: Casiers        # titre affiché (vide pour le masquer)
+# cases: 8              # nombre de cases du meuble
+# columns: 2            # colonnes du meuble
+# technical: [3]        # cases techniques (affichées grisées, sans action)
 ```
 
-La grille s'adapte à la largeur : 2 colonnes sur téléphone, davantage sur grand écran. Une seule
-carte suffit pour tous les casiers.
+La grille reproduit le meuble : Kallax 4x2 debout, **impairs à gauche (1, 3, 5, 7), pairs à
+droite (2, 4, 6, 8)**, la case 3 gardant sa place en gris « Technique ». Une seule carte suffit
+pour tous les casiers, sur téléphone comme sur grand écran.
 
 > **Ancienne carte par casier** : `custom:smart-locker-card` (avec `locker_id`) reste disponible,
 > par exemple pour afficher un seul casier. Elle est moins adaptée au téléphone que la vue d'ensemble.
@@ -198,7 +201,7 @@ avec ses segments configurés (voir [Éclairage WLED](../hardware/wled-gledopto.
 
 ### Carte Casiers (`smart-locker-lockers-card`)
 
-Vue d'ensemble : une tuile par casier, avec le numéro, l'état (couleur), la porte (orange si
+Vue d'ensemble disposée comme le meuble : une tuile par case, avec le numéro, l'état (couleur), la porte (orange si
 ouverte) et le destinataire (🔔 s'il a été notifié). L'en-tête résume la situation, par exemple :
 *2 colis · 3 libres · 1 à notifier*.
 
