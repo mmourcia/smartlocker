@@ -3,64 +3,61 @@
 Budget réel, établi à partir des commandes Amazon (mai à octobre 2026), complété des éléments
 achetés ailleurs. Montants en euros.
 
-## Synthèse par poste
+## Coût du système
 
-| Poste | Qté | HT | TTC |
+Ce qui est installé dans le meuble.
+
+| Poste | Qté | Source | TTC |
 |---|---|---|---|
-| Mini PC Home Assistant (NiPoGi Pinova P1, Ryzen 3250U, 8 Go / 256 Go) | 1 | 219,00 | 219,00 |
-| Serrures solénoïdes 12V | 8 | 99,92 | 119,92 |
-| Carte relais ESP32 LC-Relay-ESP32-8R-D5 | 3 | 52,47 | 62,97 |
-| Digicode RFID ReaIOKbii S20 (Wiegand, 125 kHz, 10 porte-clés EM4100 fournis) | 1 | 18,96 | 22,75 |
-| Contrôleur WLED Gledopto GL-C-017WL-D (ESP32, 4 voies) | 1 | 23,92 | 29,01 |
-| Ruban LED FCOB WS2811 12V 3 m + câble d'extension + kit de connecteurs | 3 | 48,30 | 57,97 |
-| Alimentation QWORK 12V 20A 240W | 1 | 15,82 | 18,99 |
-| Convertisseur 12V → 5V 15A | 1 | 15,82 | 18,99 |
-| Coffret ABS IP65 300×200×170 mm | 1 | 41,66 | 49,99 |
-| Rails DIN 35 mm (lot de 3) | 1 | 9,99 | 11,99 |
-| Câbles, Wago, gaines, connecteurs, prises C14, serre-câbles | 11 | 119,55 | 143,48 |
-| Diodes 1N4004 (lot de 150, isolation bouton d'urgence) | 1 | 5,82 | 6,99 |
-| Adaptateur USB-UART TTL CH340G (flash carte relais) | 1 | 5,82 | 6,99 |
-| **Total commandes Amazon** | | **677,05** | **769,04** |
+| Mini PC Home Assistant (NiPoGi Pinova P1, Ryzen 3250U, 8 Go / 256 Go) | 1 | Amazon | 219,00 |
+| Serrures solénoïdes 12V (7 + 1 de rechange) | 8 | Amazon | 119,92 |
+| Carte relais ESP32 LC-Relay-ESP32-8R-D5 | 1 | Amazon | 20,99 |
+| Digicode RFID ReaIOKbii S20 (Wiegand, 125 kHz, 10 porte-clés EM4100 fournis) | 1 | Amazon | 22,75 |
+| Contrôleur WLED Gledopto GL-C-017WL-D (ESP32, 4 voies) | 1 | Amazon | 29,01 |
+| Ruban LED FCOB WS2811 12V 3 m + câble d'extension + kit de connecteurs | 3 | Amazon | 57,97 |
+| Alimentation Mean Well XDR-240-12 (12V 20A, rail DIN) | 1 | Hors Amazon (estimé) | 50,00 |
+| Convertisseur 12V → 5V 15A (alimentation de l'ESP32 du digicode) | 1 | Amazon | 18,99 |
+| Coffret ABS IP65 300×200×170 mm | 1 | Amazon | 49,99 |
+| Rails DIN 35 mm (lot de 3) | 1 | Amazon | 11,99 |
+| Câbles, Wago, gaines, connecteurs, prises C14, serre-câbles | 11 | Amazon | 143,48 |
+| Diodes 1N4004 (lot de 150, isolation bouton d'urgence) | 1 | Amazon | 6,99 |
+| Adaptateur USB-UART TTL CH340G (flash carte relais) | 1 | Amazon | 6,99 |
+| Meuble IKEA Kallax 4x2 | 1 | Hors Amazon (estimé) | 75,00 |
+| Blocs porte Kallax | 8 | Hors Amazon (estimé) | 140,00 |
+| Filament 3D (gabarits, bague de copiage) | - | Hors Amazon (estimé) | ~5,00 |
+| Bouton d'urgence | 1 | Hors Amazon (estimé) | ~2,00 |
+| **Total système** | | | **~980,00** |
 
-TVA totale : 91,99 € (le mini PC, vendu par un vendeur tiers, est facturé sans TVA).
+Soit **~140 € par casier** utile (7 casiers, la case 3 étant le compartiment technique).
 
-## Hors commandes Amazon
+Dont commandes Amazon : 708,07 € TTC (626,25 € HT). Les montants hors Amazon sont repris du
+budget initial et restent à confirmer.
 
-Estimations reprises du budget initial, à confirmer.
+## Achats non utilisés
 
-| Élément | Qté | Prix unitaire | TTC |
+| Article | Qté | TTC | Raison |
 |---|---|---|---|
-| Meuble IKEA Kallax 4x2 | 1 | 75,00 | 75,00 |
-| Bloc porte Kallax | 8 | 17,50 | 140,00 |
-| Filament 3D (gabarits, bague de copiage) | - | - | ~5,00 |
-| Bouton d'urgence | 1 | ~2,00 | ~2,00 |
-| **Total** | | | **~222,00** |
+| Carte relais ESP32 LC-Relay-ESP32-8R-D5 | 2 | 41,98 | L'une a grillé ; l'autre est inutilisable (colle chaude sur les broches des reed switches) |
+| Alimentation QWORK 12V 20A 240W | 1 | 18,99 | Remplacée par la Mean Well XDR-240-12 |
+| **Total** | | **60,97** | |
 
-## Total projet
+## Total dépensé
 
 | | TTC |
 |---|---|
 | Commandes Amazon | 769,04 |
-| Hors Amazon (estimé) | ~222,00 |
-| **Total** | **~991,00** |
+| Hors Amazon (estimé) | ~272,00 |
+| **Total** | **~1 041,00** |
+| dont système installé | ~980,00 |
+| dont achats non utilisés | 60,97 |
 
-Soit **~142 € par casier** utile (7 casiers, la case 3 étant le compartiment technique).
-
-Sans les achats en double (2 cartes relais de rechange, 41,98 €), le coût d'une reproduction du
-meuble est d'environ **950 €**.
+TVA des commandes Amazon : 91,99 € (le mini PC, vendu par un vendeur tiers, est facturé sans TVA).
 
 ## Remarques
 
-- **Cartes relais** : 3 achetées pour 1 en service. Les 2 autres sont des rechanges ou des cartes de
-  test.
-- **Serrures** : 8 achetées pour 7 casiers, soit une de rechange.
 - **Badges** : les 10 porte-clés EM4100 livrés avec le digicode suffisent pour les destinataires.
-- **Écarts avec la doc matérielle**, à harmoniser :
-  - [Alimentation](hardware/alimentation.md) : la doc décrit une Mean Well XDR-240-12, l'alimentation
-    commandée est une QWORK 12V 20A ;
-  - diodes : la doc indique des 1N4007, celles commandées sont des 1N4004 (400 V, largement suffisant
-    en 12 V) ;
-  - convertisseur 12V → 5V 15A : usage à documenter.
+- **Diodes** : la doc [alimentation](hardware/alimentation.md) indique des 1N4007, celles commandées
+  sont des 1N4004 (400 V, largement suffisant en 12 V).
 
 ## Détail des commandes Amazon
 

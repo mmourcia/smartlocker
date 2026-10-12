@@ -29,9 +29,13 @@ a été changé, la séquence suivante le remet en WG26 :
 Les lignes D0/D1 du digicode sont en logique 5V. En pratique, l'ESP32 encaisse ce niveau
 sans problème sur GPIO14 et GPIO27 — aucun diviseur de tension n'est nécessaire.
 
+L'ESP32 est alimenté en **5V** (broche 5V/VIN) par un convertisseur 12V → 5V branché sur
+l'alimentation principale. Le clavier, lui, est alimenté directement en 12V. Les GND du clavier,
+de l'ESP32 et du convertisseur sont communs.
+
 | Digicode | ESP32 |
 |---|---|
-| VCC | 12V |
+| VCC | 12V (bornes de la Mean Well) |
 | GND | GND commun |
 | D0 | GPIO14 |
 | D1 | GPIO27 |
