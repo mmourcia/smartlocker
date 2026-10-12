@@ -96,7 +96,7 @@ Détails : [dashboard, section configuration.yaml](home-assistant/dashboard.md#c
 
 ## 7. Dashboard
 
-Créer un tableau de bord avec les cartes Casier, Destinataires, Messages et Éclairage (YAML prêt à
+Créer un tableau de bord avec les cartes Casiers (vue d'ensemble), Destinataires, Messages et Éclairage (YAML prêt à
 coller : [dashboard](home-assistant/dashboard.md#cartes-lovelace)). Si une carte affiche une erreur
 de configuration, vider le cache du navigateur (Ctrl+Maj+R).
 

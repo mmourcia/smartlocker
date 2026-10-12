@@ -118,11 +118,13 @@ const CSS = `
   /* Boutons d'action */
   .actions {
     display: flex;
+    flex-wrap: wrap;
     gap: 6px;
     margin-bottom: 10px;
   }
   .btn {
-    flex: 1;
+    flex: 1 1 auto;
+    min-width: 0;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1333,5 +1335,318 @@ window.customCards.push({
   type:        'smart-locker-messages-card',
   name:        'Smart Locker — Messages',
   description: 'Templates du titre, du SMS et de l\'email envoyés aux destinataires',
+  preview:     false,
+});
+
+// ─── Carte vue d'ensemble de tous les casiers ───────────────────────────────
+// Grille compacte (2 colonnes sur téléphone, plus sur grand écran). Un tap sur un
+// casier ouvre son détail sous la grille, avec les seules actions utiles à son état.
+// Couleurs alignées sur les LED du meuble (bleu = colis, orange = porte ouverte).
+
+const OVERVIEW_STATES = {
+  libre:        { color: '#43A047', label: 'Libre' },
+  'occupé':     { color: '#1E88E5', label: 'À notifier' },
+  en_attente:   { color: '#1E88E5', label: 'Colis en attente' },
+  'récupéré':   { color: '#00ACC1', label: 'Récupéré' },
+  hors_service: { color: '#E53935', label: 'Hors service' },
+};
+const DOOR_OPEN_COLOR = '#FB8C00';
+
+const OCSS = `
+  :host { display: block; }
+  ha-card { padding: 12px; }
+  .head { display: flex; align-items: center; justify-content: space-between; margin: 2px 4px 10px; }
+  .head h2 { font-size: 1.05em; font-weight: 600; margin: 0; }
+  .summary { font-size: 0.78em; color: var(--secondary-text-color); }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 8px; }
+  .tile {
+    all: unset; box-sizing: border-box; cursor: pointer; min-width: 0;
+    display: flex; flex-direction: column; gap: 3px;
+    padding: 8px 10px 9px; border-radius: 10px;
+    background: color-mix(in srgb, var(--c) 10%, var(--card-background-color));
+    border: 1px solid color-mix(in srgb, var(--c) 35%, transparent);
+    border-left: 5px solid var(--c);
+    transition: transform 0.1s, box-shadow 0.15s;
+  }
+  .tile:hover { box-shadow: 0 1px 6px rgba(0,0,0,0.12); }
+  .tile:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
+  .tile.sel { box-shadow: 0 0 0 2px var(--c); }
+  .tile .top { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
+  .tile .num { font-size: 1.5em; font-weight: 700; line-height: 1; color: var(--primary-text-color); }
+  .tile .state { font-size: 0.8em; font-weight: 600; color: var(--c); }
+  .tile .who {
+    font-size: 0.78em; color: var(--primary-text-color); white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; min-height: 1.2em;
+  }
+  .tile .who.empty { color: var(--secondary-text-color); }
+  .door { display: inline-flex; align-items: center; gap: 2px; font-size: 0.7em; font-weight: 600;
+          color: var(--secondary-text-color); }
+  .door.open { color: ${DOOR_OPEN_COLOR}; }
+  .door ha-icon { --mdc-icon-size: 16px; color: inherit; }
+  .bell { --mdc-icon-size: 13px; color: var(--secondary-text-color); vertical-align: -2px; }
+
+  .detail {
+    margin-top: 10px; padding: 12px; border-radius: 10px;
+    border: 1px solid var(--divider-color); border-top: 4px solid var(--c);
+  }
+  .d-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .d-head .t { font-weight: 700; font-size: 1.05em; flex: 1; min-width: 0; }
+  .d-head .t span { font-weight: 600; font-size: 0.85em; color: var(--c); margin-left: 6px; }
+  .x { all: unset; cursor: pointer; padding: 2px; color: var(--secondary-text-color); }
+  .x ha-icon { --mdc-icon-size: 20px; }
+
+  .pin { display: flex; align-items: baseline; gap: 8px; margin: 2px 0 10px; }
+  .pin .lbl { font-size: 0.75em; color: var(--secondary-text-color); }
+  .pin .v { font-family: monospace; font-size: 1.6em; font-weight: 700; letter-spacing: 3px; }
+  .info { font-size: 0.82em; color: var(--secondary-text-color); margin: 0 0 10px; }
+
+  .people { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 4px; max-width: 100%;
+    padding: 4px 4px 4px 10px; border-radius: 14px; font-size: 0.85em;
+    background: var(--secondary-background-color);
+  }
+  .chip .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chip .when { font-size: 0.85em; color: var(--secondary-text-color); white-space: nowrap; }
+  .chip button { all: unset; cursor: pointer; display: flex; padding: 2px; border-radius: 50%;
+                 color: var(--secondary-text-color); }
+  .chip button ha-icon { --mdc-icon-size: 16px; }
+
+  .assign { display: flex; gap: 6px; margin-bottom: 10px; }
+  .assign select {
+    flex: 1; min-width: 0; padding: 8px; border-radius: 8px; font-size: 0.9em;
+    border: 1px solid var(--divider-color); background: var(--card-background-color);
+    color: var(--primary-text-color);
+  }
+  .b {
+    all: unset; box-sizing: border-box; cursor: pointer; display: inline-flex; align-items: center;
+    justify-content: center; gap: 6px; padding: 8px 14px; border-radius: 8px; font-size: 0.9em;
+    font-weight: 600; white-space: nowrap;
+  }
+  .b ha-icon { --mdc-icon-size: 18px; color: inherit; }
+  .b.primary { background: var(--primary-color); color: #fff; }
+  .b.primary.wide { width: 100%; margin-bottom: 10px; }
+  .b:disabled { opacity: 0.4; pointer-events: none; }
+  .more { display: flex; flex-wrap: wrap; gap: 4px 2px; border-top: 1px solid var(--divider-color);
+          padding-top: 6px; }
+  .b.link { padding: 6px 8px; font-weight: 500; font-size: 0.82em; color: var(--secondary-text-color); }
+  .b.link:hover { color: var(--primary-text-color); background: var(--secondary-background-color); }
+  .b.link.danger:hover { color: #E53935; }
+  .err { color: #E53935; font-size: 0.8em; margin-top: 6px; }
+`;
+
+class SmartLockerLockersCard extends HTMLElement {
+  static getStubConfig() { return {}; }
+  constructor() {
+    super();
+    this.attachShadow({ mode: 'open' });
+    this._selected = null;
+    this._recipients = [];
+    this._sig = '';
+  }
+
+  setConfig(config) {
+    this._config = config || {};
+    this._ids = (this._config.lockers || [1, 2, 4, 5, 6, 7, 8]).map(Number);
+    this._title = this._config.title ?? 'Casiers';
+    this._sig = '';
+    if (this._hass) this._render();
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    if (!this._recipientsLoaded) { this._recipientsLoaded = true; this._loadRecipients(); }
+    // Ne redessiner que si un casier ou une porte a changé (préserve la saisie en cours)
+    const sig = this._ids.map(i => {
+      const l = hass.states[`smart_locker.casier_${i}`], d = hass.states[this._door(i)];
+      return `${l && l.last_updated}|${d && d.state}`;
+    }).join(';');
+    if (sig !== this._sig) { this._sig = sig; this._render(); }
+  }
+
+  async _loadRecipients() {
+    try {
+      const list = await this._hass.callWS({ type: 'smart_locker/recipients/list' });
+      this._recipients = list.sort((a, b) =>
+        `${a.last_name} ${a.first_name}`.localeCompare(`${b.last_name} ${b.first_name}`));
+    } catch (_) { this._recipients = []; }
+    this._render();
+  }
+
+  _door(i) { return `binary_sensor.smart_locker_relais_porte_casier_${i}`; }
+
+  _locker(i) {
+    const e = this._hass.states[`smart_locker.casier_${i}`];
+    if (!e) return null;
+    const cfg = OVERVIEW_STATES[e.state] || { color: '#9E9E9E', label: e.state };
+    const door = this._hass.states[this._door(i)];
+    return {
+      id: i, state: e.state, cfg, attrs: e.attributes,
+      people: e.attributes.assigned_recipients || [],
+      doorOpen: door ? door.state === 'on' : null,
+    };
+  }
+
+  _render() {
+    if (!this._hass) return;
+    const lockers = this._ids.map(i => this._locker(i)).filter(Boolean);
+    const busy = lockers.filter(l => ['occupé', 'en_attente'].includes(l.state)).length;
+    const free = lockers.filter(l => l.state === 'libre').length;
+    const toNotify = lockers.filter(l => l.state === 'occupé').length;
+    const down = lockers.filter(l => l.state === 'hors_service').length;
+    const sel = lockers.find(l => l.id === this._selected);
+
+    // Conserver la sélection du menu déroulant pendant un redessin
+    const prevSelect = this.shadowRoot.getElementById('who');
+    const prevValue = prevSelect ? prevSelect.value : '';
+
+    this.shadowRoot.innerHTML = `
+      <style>${OCSS}</style>
+      <ha-card>
+        <div class="head">
+          <h2>${this._esc(this._title)}</h2>
+          <span class="summary">${busy} colis · ${free} libre${free > 1 ? 's' : ''}${toNotify ? ` · ${toNotify} à notifier` : ''}${down ? ` · ${down} HS` : ''}</span>
+        </div>
+        <div class="grid">${lockers.map(l => this._tile(l)).join('')}</div>
+        ${sel ? this._detail(sel) : ''}
+      </ha-card>`;
+
+    const sr = this.shadowRoot;
+    sr.querySelectorAll('.tile').forEach(t => t.onclick = () => {
+      const id = Number(t.dataset.id);
+      this._selected = this._selected === id ? null : id;
+      this._error = '';
+      this._render();
+      if (this._selected) sr.querySelector('.detail')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+    if (sel) this._bindDetail(sel, prevValue);
+  }
+
+  _tile(l) {
+    const who = l.people.length
+      ? `${this._esc(l.people[0].name)}${l.people.length > 1 ? ` +${l.people.length - 1}` : ''}`
+        + (l.people.some(p => p.notified_at) ? ' <ha-icon class="bell" icon="mdi:bell-check"></ha-icon>' : '')
+      : (l.state === 'libre' ? 'Disponible' : '—');
+    const door = l.doorOpen === null ? ''
+      : `<span class="door ${l.doorOpen ? 'open' : ''}" title="Porte ${l.doorOpen ? 'ouverte' : 'fermée'}">
+           <ha-icon icon="${l.doorOpen ? 'mdi:door-open' : 'mdi:door-closed'}"></ha-icon>${l.doorOpen ? 'Ouverte' : ''}</span>`;
+    return `
+      <button class="tile ${this._selected === l.id ? 'sel' : ''}" data-id="${l.id}" style="--c:${l.cfg.color}"
+              aria-label="Casier ${l.id}, ${this._esc(l.cfg.label)}">
+        <div class="top"><span class="num">${l.id}</span>${door}</div>
+        <div class="state">${this._esc(l.cfg.label)}</div>
+        <div class="who ${l.people.length ? '' : 'empty'}">${who}</div>
+      </button>`;
+  }
+
+  _detail(l) {
+    const pin = l.attrs.pin_code;
+    const hs = l.state === 'hors_service';
+    const canAssign = !hs && l.state !== 'récupéré';
+    const assignedIds = new Set(l.people.map(p => p.id));
+    const options = this._recipients.filter(r => !assignedIds.has(r.id));
+    const pending = l.people.filter(p => !p.notified_at).length;
+
+    let primary = '';
+    if (hs) primary = `<button class="b primary wide" data-act="unhs"><ha-icon icon="mdi:wrench-check"></ha-icon>Remettre en service</button>`;
+    else if (l.people.length && pending) primary = `<button class="b primary wide" data-act="notify"><ha-icon icon="mdi:send"></ha-icon>Notifier ${pending > 1 ? `(${pending})` : ''}</button>`;
+
+    const info = {
+      'récupéré': `Colis récupéré${l.attrs.retrieved_at ? ` le ${this._esc(l.attrs.retrieved_at)}` : ''}. Le casier se libère à la fermeture de la porte.`,
+      hors_service: 'Le code et le badge n\'ouvrent pas ce casier. Le contenu est conservé.',
+      libre: 'Déposez le colis, puis choisissez son destinataire.',
+    }[l.state];
+
+    return `
+      <div class="detail" style="--c:${l.cfg.color}">
+        <div class="d-head">
+          <div class="t">Casier ${l.id}<span>${this._esc(l.cfg.label)}</span></div>
+          <button class="x" data-act="close" aria-label="Fermer"><ha-icon icon="mdi:close"></ha-icon></button>
+        </div>
+        ${pin && !hs && l.state !== 'récupéré' ? `<div class="pin"><span class="lbl">Code</span><span class="v">${pin.slice(0, 3)} ${pin.slice(3)}</span></div>` : ''}
+        ${info ? `<p class="info">${info}</p>` : ''}
+        ${l.people.length ? `<div class="people">${l.people.map(p => `
+          <span class="chip"><span class="n">${this._esc(p.name)}</span>
+            ${p.notified_at ? `<span class="when"><ha-icon class="bell" icon="mdi:bell-check"></ha-icon>${this._esc(p.notified_at)}</span>` : ''}
+            <button data-unassign="${this._esc(p.id)}" aria-label="Retirer ${this._esc(p.name)}"><ha-icon icon="mdi:close-circle"></ha-icon></button>
+          </span>`).join('')}</div>` : ''}
+        ${primary}
+        ${canAssign ? `
+          <div class="assign">
+            <select id="who" aria-label="Destinataire">
+              <option value="">${l.people.length ? 'Ajouter un destinataire…' : 'Choisir le destinataire…'}</option>
+              ${options.map(r => `<option value="${this._esc(r.id)}">${this._esc(r.first_name)} ${this._esc(r.last_name)}</option>`).join('')}
+            </select>
+            <button class="b ${l.people.length ? 'link' : 'primary'}" data-act="assign" disabled><ha-icon icon="mdi:account-plus"></ha-icon>Assigner</button>
+          </div>` : ''}
+        <div class="more">
+          <button class="b link" data-act="open"><ha-icon icon="mdi:lock-open-variant"></ha-icon>Ouvrir</button>
+          ${l.state !== 'libre' ? `<button class="b link danger" data-act="reset"><ha-icon icon="mdi:lock-reset"></ha-icon>Libérer</button>` : ''}
+          ${hs ? '' : `<button class="b link danger" data-act="hs"><ha-icon icon="mdi:wrench"></ha-icon>Hors service</button>`}
+        </div>
+        ${this._error ? `<div class="err">${this._esc(this._error)}</div>` : ''}
+      </div>`;
+  }
+
+  _bindDetail(l, prevValue) {
+    const sr = this.shadowRoot;
+    const select = sr.getElementById('who');
+    const assignBtn = sr.querySelector('[data-act="assign"]');
+    if (select) {
+      if ([...select.options].some(o => o.value === prevValue)) select.value = prevValue;
+      assignBtn.disabled = !select.value;
+      select.onchange = () => { assignBtn.disabled = !select.value; };
+    }
+    sr.querySelectorAll('[data-unassign]').forEach(b => b.onclick = () =>
+      this._call('unassign', l.id, { recipient_id: b.dataset.unassign }));
+    sr.querySelectorAll('[data-act]').forEach(b => b.onclick = () => {
+      const act = b.dataset.act;
+      if (act === 'close') { this._selected = null; this._render(); return; }
+      if (act === 'assign') { if (select.value) this._call('assign', l.id, { recipient_id: select.value }); return; }
+      if (act === 'notify') return this._call('notify', l.id);
+      if (act === 'open') {
+        if (confirm(`Ouvrir la serrure du casier ${l.id} ?`)) this._call('open', l.id);
+        return;
+      }
+      if (act === 'reset') {
+        const msg = l.people.length
+          ? `Libérer le casier ${l.id} ? Le code et les destinataires seront effacés.`
+          : `Libérer le casier ${l.id} ?`;
+        if (confirm(msg)) this._call('reset', l.id);
+        return;
+      }
+      if (act === 'hs') {
+        if (confirm(`Mettre le casier ${l.id} hors service ?\nLe code et le badge ne l'ouvriront plus.`))
+          this._call('set_out_of_service', l.id, { out_of_service: true });
+        return;
+      }
+      if (act === 'unhs') this._call('set_out_of_service', l.id, { out_of_service: false });
+    });
+  }
+
+  async _call(service, id, extra = {}) {
+    this._error = '';
+    try {
+      await this._hass.callService('smart_locker', service, { locker_id: id, ...extra });
+    } catch (err) {
+      this._error = err.message || String(err);
+      this._render();
+    }
+  }
+
+  _esc(s) {
+    return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  getCardSize() { return 4; }
+}
+
+customElements.define('smart-locker-lockers-card', SmartLockerLockersCard);
+
+window.customCards.push({
+  type:        'smart-locker-lockers-card',
+  name:        'Smart Locker — Casiers',
+  description: 'Vue d\'ensemble de tous les casiers, détail et actions au toucher',
   preview:     false,
 });
