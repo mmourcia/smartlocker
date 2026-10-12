@@ -77,3 +77,13 @@ Tests du custom component dans un Home Assistant de test (WLED simulé) :
 pip install -r requirements_test.txt
 pytest
 ```
+
+---
+
+## Licence
+
+© 2026 Mikael Mourcia. Ce projet (code, configurations et documentation) est publié sous licence
+[Creative Commons Attribution - Pas d'Utilisation Commerciale - Partage dans les Mêmes Conditions 4.0
+International (CC BY-NC-SA 4.0)](https://creativecommons.org/licenses/by-nc-sa/4.0/deed.fr) :
+réutilisation et modification libres en citant l'auteur, sans usage commercial, et les dérivés
+sont partagés sous la même licence. Texte complet : [LICENSE](LICENSE).
