@@ -3,9 +3,11 @@ import voluptuous as vol
 
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import TemplateError
 from homeassistant.helpers.storage import Store
 
-from .const import DOMAIN, STORE_KEY_RECIPIENTS, STORE_VERSION, DEFAULT_SETTINGS
+from .const import DOMAIN, STORE_KEY_RECIPIENTS, STORE_VERSION, DEFAULT_SETTINGS, TEMPLATE_KEYS
+from .messages import validate_templates
 
 
 async def async_setup_recipients(hass: HomeAssistant) -> None:
@@ -23,7 +25,12 @@ async def async_setup_recipients(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_set_settings)
 
 
-async def _save(hass: HomeAssistant) -> None:
+def _refresh_lockers(hass: HomeAssistant) -> None:
+    for locker in hass.data[DOMAIN]["lockers"].values():
+        locker.refresh()
+
+
+async def async_save(hass: HomeAssistant) -> None:
     await hass.data[DOMAIN]["store"].async_save({
         "recipients": hass.data[DOMAIN]["recipients"],
         "settings":   hass.data[DOMAIN]["settings"],
@@ -57,9 +64,10 @@ async def ws_add_recipient(hass: HomeAssistant, connection: websocket_api.Active
         "mobile":          msg.get("mobile", ""),
         "email":           msg.get("email", ""),
         "notify_services": msg.get("notify_services", []),
+        "badge_id":        "",
     }
     hass.data[DOMAIN]["recipients"].append(recipient)
-    await _save(hass)
+    await async_save(hass)
     connection.send_result(msg["id"], recipient)
 
 
@@ -84,8 +92,10 @@ async def ws_update_recipient(hass: HomeAssistant, connection: websocket_api.Act
                 "mobile":          msg.get("mobile", ""),
                 "email":           msg.get("email", ""),
                 "notify_services": msg.get("notify_services", []),
+                "badge_id":        r.get("badge_id", ""),  # gere par smart_locker/badges/*
             }
-            await _save(hass)
+            await async_save(hass)
+            _refresh_lockers(hass)
             connection.send_result(msg["id"], recipients[i])
             return
     connection.send_error(msg["id"], "not_found", "Destinataire introuvable")
@@ -100,7 +110,8 @@ async def ws_delete_recipient(hass: HomeAssistant, connection: websocket_api.Act
     hass.data[DOMAIN]["recipients"] = [
         r for r in hass.data[DOMAIN]["recipients"] if r["id"] != msg["recipient_id"]
     ]
-    await _save(hass)
+    await async_save(hass)
+    _refresh_lockers(hass)
     connection.send_result(msg["id"], {"success": True})
 
 
@@ -117,6 +128,8 @@ async def ws_get_settings(hass: HomeAssistant, connection: websocket_api.ActiveC
 @websocket_api.websocket_command({
     vol.Required("type"): "smart_locker/settings/set",
     vol.Optional("notification_title"): vol.All(str, vol.Length(min=1)),
+    vol.Optional("msg_text"):           vol.All(str, vol.Length(min=1)),
+    vol.Optional("msg_email_html"):     vol.All(str, vol.Length(min=1)),
     vol.Optional("led_entry_id"):       str,
     vol.Optional("led_brightness"):     vol.All(vol.Coerce(int), vol.Range(min=1, max=255)),
     vol.Optional("led_timeout"):        vol.All(vol.Coerce(int), vol.Range(min=5, max=3600)),
@@ -125,9 +138,14 @@ async def ws_get_settings(hass: HomeAssistant, connection: websocket_api.ActiveC
 @websocket_api.async_response
 async def ws_set_settings(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict) -> None:
     settings = hass.data[DOMAIN]["settings"]
+    try:
+        validate_templates(hass, {k: msg.get(k, settings[k]) for k in TEMPLATE_KEYS})
+    except TemplateError as err:
+        connection.send_error(msg["id"], "invalid_template", str(err))
+        return
     for key in DEFAULT_SETTINGS:
         if key in msg:
             settings[key] = msg[key]
-    await _save(hass)
+    await async_save(hass)
     hass.data[DOMAIN]["leds"].settings_changed()
     connection.send_result(msg["id"], settings)

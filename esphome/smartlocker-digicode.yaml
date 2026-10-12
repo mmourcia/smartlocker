@@ -37,11 +37,13 @@ wiegand:
     d1: GPIO27
     on_tag:
       # Badge RFID -> ID transmis directement a Home Assistant (x est deja un std::string)
+      # Evenement dedie (et non esphome.tag_scanned, que HA convertit en tag generique
+      # declenchable par n'importe quel lecteur NFC) : seul ce lecteur ouvre les casiers.
       - text_sensor.template.publish:
           id: tag_id
           state: !lambda 'return x;'
       - homeassistant.event:
-          event: esphome.tag_scanned
+          event: esphome.badge_scanned
           data:
             tag_id: !lambda 'return x;'
 
@@ -70,10 +72,14 @@ key_collector:
           data:
             code: !lambda 'return x;'
 
+    # Saisie commencee puis abandonnee : signalee comme un mauvais code (clignotement
+    # rouge) pour indiquer a l'utilisateur qu'il peut recommencer.
     on_timeout:
       - text_sensor.template.publish:
           id: pin_code
           state: ""
+      - homeassistant.event:
+          event: esphome.keypad_timeout
 
 
 # Capteurs exposes dans Home Assistant

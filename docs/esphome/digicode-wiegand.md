@@ -83,7 +83,10 @@ key_collector:
 | `on_progress` | événement | `esphome.keypad_key_pressed` à chaque touche : allume l'éclairage |
 
 Le badge RFID passe par `on_tag` du composant `wiegand` : publication dans le capteur
-« Badge RFID » et événement `esphome.tag_scanned` (reçu côté HA comme `tag_scanned`, voir plus bas).
+« Badge RFID » et événement **`esphome.badge_scanned`** (voir plus bas pourquoi pas `esphome.tag_scanned`).
+
+Le `on_timeout` émet `esphome.keypad_timeout` : une saisie commencée puis abandonnée 10 s est
+signalée comme un mauvais code (clignotement rouge), l'utilisateur sait qu'il peut recommencer.
 
 ### Touches speciales
 
@@ -97,17 +100,19 @@ Le badge RFID passe par `on_tag` du composant `wiegand` : publication dans le ca
 
 ## Cote Home Assistant
 
-Trois evenements sont emis :
+Quatre evenements sont emis :
 
 | Evenement | Champ data | Declencheur |
 |---|---|---|
 | `esphome.keypad_key_pressed` | - | Chaque touche pressee |
 | `esphome.keypad_code_entered` | `code` | 6e chiffre du PIN saisi |
-| `tag_scanned` | `tag_id`, `device_id` | Badge RFID presente devant le lecteur |
+| `esphome.keypad_timeout` | - | Saisie commencee puis abandonnee (10 s sans touche) |
+| `esphome.badge_scanned` | `tag_id`, `device_id` | Badge RFID presente devant le lecteur |
 
-> Home Assistant intercepte `esphome.tag_scanned` et le transforme en **scan de tag natif** : le
-> badge apparaît dans *Paramètres › Tags* et l'événement émis sur le bus est `tag_scanned`, pas
-> `esphome.tag_scanned`. Les automatisations doivent donc écouter `tag_scanned` (ou utiliser le
+> Pourquoi pas `esphome.tag_scanned` ? Home Assistant intercepte ce nom et le transforme en
+> **scan de tag natif** (événement `tag_scanned`), que n'importe quel lecteur NFC peut produire,
+> y compris un téléphone avec l'app Companion. Avec un événement dédié, seul le lecteur du meuble
+> peut ouvrir un casier. Les automatisations doivent donc écouter `esphome.badge_scanned` (pas le
 > déclencheur *Tag*).
 
 Le composant `smart_locker` écoute directement ces événements : **aucune automatisation n'est
@@ -121,7 +126,7 @@ trigger:
     event_type: esphome.keypad_code_entered
     id: pin
   - platform: event
-    event_type: tag_scanned
+    event_type: esphome.badge_scanned
     id: badge
 action:
   - variables:
@@ -134,8 +139,9 @@ action:
   # Verification de l'identifiant et ouverture du casier correspondant
 ```
 
-> Relever l'ID d'un badge en le presentant devant le lecteur et en consultant
-> les logs ESPHome ou l'etat de l'entite `sensor.smart_locker_digicode_badge_rfid` dans HA.
+> Pour attribuer un badge a un destinataire, utiliser le bouton d'enrolement de la carte
+> Destinataires (voir [dashboard](../home-assistant/dashboard.md#badges)). L'ID du dernier badge lu
+> reste visible dans `sensor.smart_locker_digicode_badge_rfid`.
 
 ---
 

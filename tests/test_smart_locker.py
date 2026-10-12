@@ -1,4 +1,5 @@
 """Tests du composant smart_locker : digicode, eclairage WLED (mocke), parametres."""
+import asyncio
 from unittest.mock import patch
 import pytest
 import custom_components.smart_locker
@@ -21,6 +22,8 @@ async def setup(hass, aioclient_mock):
         await hass.async_block_till_done()
         from custom_components.smart_locker.const import DOMAIN
         hass.data[DOMAIN]["settings"]["led_entry_id"] = entry.entry_id
+        hass.data[DOMAIN]["recipients"].append(
+            {"id": "r-jean", "first_name": "Jean", "last_name": "Dupont", "notify_services": []})
         yield presses
 
 def last(aioclient_mock):
@@ -62,20 +65,28 @@ async def test_flow(hass, aioclient_mock, setup):
     # Bon code -> casier 2 vert clignotant seul, relais declenche
     pin = hass.states.get("smart_locker.casier_2").attributes["pin_code"]
     hass.bus.async_fire("esphome.keypad_code_entered", {"code": pin}); await hass.async_block_till_done()
-    assert presses[-1].data == {"entity_id": "button.smart_locker_relais_ouvrir_casier_2"}
-    assert hass.states.get("smart_locker.casier_2").state == "récupéré"
+    assert presses[-1].data == {"entity_id": ["button.smart_locker_relais_ouvrir_casier_2"]}
+    assert hass.states.get("smart_locker.casier_2").state == "occupé", "recupere seulement a l'ouverture"
     s = segs(last(aioclient_mock))
     assert s[2] == ((0, 255, 0), 1) and all(s[i] is None for i in (1, 3, 4, 5, 6, 7, 8))
 
-    # Porte 2 ouverte trop longtemps -> orange clignotant
+    # Ouverture de la porte -> recupere + evenement
+    events = []
+    hass.bus.async_listen("smart_locker_retrieved", events.append)
     hass.states.async_set("binary_sensor.smart_locker_relais_porte_casier_2", "on"); await hass.async_block_till_done()
+    assert hass.states.get("smart_locker.casier_2").state == "récupéré"
+    assert events[0].data == {"locker_id": 2, "recipients": ["Jean Dupont"]}
+
+    # Porte 2 ouverte trop longtemps -> orange clignotant
     CLOCK[0] += 61; async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=70)); await hass.async_block_till_done()
     s = segs(last(aioclient_mock))
     s = segs(last(aioclient_mock))
     assert s[2] == ((255, 110, 0), 1) and s[1] is None, s   # session expiree (30 s) : seule l'alerte reste
     hass.states.async_set("binary_sensor.smart_locker_relais_porte_casier_2", "off"); await hass.async_block_till_done()
     s = segs(last(aioclient_mock))
-    assert s[2] == ((0, 255, 0), 0), s   # fermeture = activite recente -> session, casier recupere en vert
+    assert s[2] == ((0, 255, 0), 0), s   # fermeture = activite recente -> session, casier libre en vert
+    st = hass.states.get("smart_locker.casier_2")
+    assert st.state == "libre" and "pin_code" not in st.attributes, "liberation automatique a la fermeture"
 
     # Fin de session -> extinction
     CLOCK[0] += 31; async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=120)); await hass.async_block_till_done()
@@ -84,13 +95,13 @@ async def test_flow(hass, aioclient_mock, setup):
 async def test_settings_ws(hass, hass_ws_client, setup):
     ws = await hass_ws_client(hass)
     await ws.send_json({"id": 1, "type": "smart_locker/leds/devices"})
-    r = await ws.receive_json(); assert r["result"][0]["title"] == "WLED-Gledopto"
+    r = await asyncio.wait_for(ws.receive_json(), 2); assert r["result"][0]["title"] == "WLED-Gledopto"
     await ws.send_json({"id": 2, "type": "smart_locker/settings/set", "led_brightness": 80, "led_timeout": 45})
-    r = await ws.receive_json(); assert r["success"] and r["result"]["led_brightness"] == 80 and r["result"]["notification_title"]
+    r = await asyncio.wait_for(ws.receive_json(), 2); assert r["success"] and r["result"]["led_brightness"] == 80 and r["result"]["notification_title"]
     await ws.send_json({"id": 3, "type": "smart_locker/settings/set", "led_brightness": 999})
-    r = await ws.receive_json(); assert not r["success"]
+    r = await asyncio.wait_for(ws.receive_json(), 2); assert not r["success"]
     await ws.send_json({"id": 4, "type": "smart_locker/leds/test"})
-    r = await ws.receive_json(); assert r["success"]
+    r = await asyncio.wait_for(ws.receive_json(), 2); assert r["success"]
 
 async def test_locker3_refused(hass, setup):
     import voluptuous as vol
@@ -104,6 +115,192 @@ async def test_reconnect_no_activity(hass, aioclient_mock, setup):
     hass.states.async_set(e, "off"); await hass.async_block_till_done()
     assert aioclient_mock.call_count == n
 
-async def test_tag_wakes_leds(hass, aioclient_mock, setup):
-    hass.bus.async_fire("tag_scanned", {"tag_id": "1234", "device_id": "x"}); await hass.async_block_till_done()
-    assert aioclient_mock.mock_calls[-1][2]["on"] is True
+async def test_keypad_timeout_is_error(hass, aioclient_mock, setup):
+    hass.bus.async_fire("esphome.keypad_timeout", {}); await hass.async_block_till_done()
+    s = segs(last(aioclient_mock))
+    assert all(s[i] == ((255, 0, 0), 1) for i in (1, 2, 4, 5, 6, 7, 8))
+
+
+async def test_generic_tag_ignored(hass, aioclient_mock, setup):
+    """Un tag HA generique (ex. NFC d'un telephone) n'agit pas sur les casiers."""
+    n = aioclient_mock.call_count
+    hass.bus.async_fire("tag_scanned", {"tag_id": "1234"}); await hass.async_block_till_done()
+    assert aioclient_mock.call_count == n
+
+
+async def _add(ws, i, first, last):
+    await ws.send_json({"id": i, "type": "smart_locker/recipients/add", "first_name": first, "last_name": last})
+    return (await asyncio.wait_for(ws.receive_json(), 2))["result"]
+
+
+async def test_badge_enroll_conflict_and_open(hass, hass_ws_client, aioclient_mock, setup):
+    presses = setup
+    ws = await hass_ws_client(hass)
+    jean = await _add(ws, 1, "Jean", "Dupont")
+    anne = await _add(ws, 2, "Anne", "Martin")
+
+    # Enrolement de Jean
+    await ws.send_json({"id": 3, "type": "smart_locker/badges/enroll", "recipient_id": jean["id"]})
+    assert (await asyncio.wait_for(ws.receive_json(), 2))["success"]
+    assert (await asyncio.wait_for(ws.receive_json(), 2))["event"]["status"] == "waiting"
+    hass.bus.async_fire("esphome.badge_scanned", {"tag_id": "777"}); await hass.async_block_till_done()
+    assert (await asyncio.wait_for(ws.receive_json(), 2))["event"] == {"status": "enrolled", "badge_id": "777"}
+    assert not presses, "un badge en cours d'enrolement n'ouvre rien"
+
+    # Meme badge pour Anne -> conflit
+    await ws.send_json({"id": 4, "type": "smart_locker/badges/enroll", "recipient_id": anne["id"]})
+    await asyncio.wait_for(ws.receive_json(), 2); await asyncio.wait_for(ws.receive_json(), 2)
+    hass.bus.async_fire("esphome.badge_scanned", {"tag_id": "777"}); await hass.async_block_till_done()
+    ev = (await asyncio.wait_for(ws.receive_json(), 2))["event"]
+    assert ev["status"] == "conflict" and ev["owner"] == "Jean Dupont"
+    # Annulation implicite : Jean garde le badge
+    from custom_components.smart_locker.badges import find_by_badge
+    assert find_by_badge(hass, "777")["id"] == jean["id"]
+
+    # Edition de Jean (formulaire) : le badge est conserve
+    await ws.send_json({"id": 5, "type": "smart_locker/recipients/update", "recipient_id": jean["id"],
+                        "first_name": "Jean", "last_name": "Dupont", "mobile": "0600000000"})
+    assert (await asyncio.wait_for(ws.receive_json(), 2))["result"]["badge_id"] == "777"
+
+    # Reattribution forcee a Anne
+    await ws.send_json({"id": 6, "type": "smart_locker/badges/assign", "recipient_id": anne["id"], "badge_id": "777"})
+    r = await asyncio.wait_for(ws.receive_json(), 2); assert r["error"]["code"] == "conflict"
+    await ws.send_json({"id": 7, "type": "smart_locker/badges/assign", "recipient_id": anne["id"], "badge_id": "777", "force": True})
+    assert (await asyncio.wait_for(ws.receive_json(), 2))["success"]
+    assert find_by_badge(hass, "777")["id"] == anne["id"]
+
+    # Anne a deux colis -> le badge ouvre les deux casiers
+    for lid in (4, 6):
+        await hass.services.async_call("smart_locker", "assign", {"locker_id": lid, "user": "Anne Martin"}, blocking=True)
+    hass.bus.async_fire("esphome.badge_scanned", {"tag_id": "777"}); await hass.async_block_till_done()
+    assert sorted(presses[-1].data["entity_id"]) == [
+        "button.smart_locker_relais_ouvrir_casier_4", "button.smart_locker_relais_ouvrir_casier_6"]
+    s = segs(last(aioclient_mock))
+    assert s[4] == s[6] == ((0, 255, 0), 1) and s[1] is None
+    hass.states.async_set("binary_sensor.smart_locker_relais_porte_casier_4", "on"); await hass.async_block_till_done()
+    assert hass.states.get("smart_locker.casier_4").state == "récupéré"
+
+    # Badge inconnu -> rouge
+    CLOCK[0] += 10; async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=10)); await hass.async_block_till_done()
+    hass.bus.async_fire("esphome.badge_scanned", {"tag_id": "999"}); await hass.async_block_till_done()
+    assert segs(last(aioclient_mock))[1] == ((255, 0, 0), 1)
+
+
+async def test_badge_enroll_timeout(hass, hass_ws_client, setup):
+    ws = await hass_ws_client(hass)
+    jean = await _add(ws, 1, "Jean", "Dupont")
+    await ws.send_json({"id": 2, "type": "smart_locker/badges/enroll", "recipient_id": jean["id"]})
+    await asyncio.wait_for(ws.receive_json(), 2); await asyncio.wait_for(ws.receive_json(), 2)
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=31)); await hass.async_block_till_done()
+    assert (await asyncio.wait_for(ws.receive_json(), 2))["event"]["status"] == "timeout"
+    assert not hass.data["smart_locker"]["badges"].active
+
+
+async def test_message_templates(hass, hass_ws_client, setup):
+    sent = async_mock_service(hass, "notify", "smtp_test")
+    ws = await hass_ws_client(hass)
+    await ws.send_json({"id": 1, "type": "smart_locker/recipients/add", "first_name": "Jean", "last_name": "Martin",
+                        "email": "j@d.fr", "notify_services": ["smtp_test"]})
+    jean = (await asyncio.wait_for(ws.receive_json(), 2))["result"]
+
+    # Template invalide refuse
+    await ws.send_json({"id": 2, "type": "smart_locker/settings/set", "msg_text": "{{ pin "})
+    assert (await asyncio.wait_for(ws.receive_json(), 2))["error"]["code"] == "invalid_template"
+
+    # Apercu
+    await ws.send_json({"id": 3, "type": "smart_locker/messages/preview", "notification_title": "Casier {{ locker }}"})
+    r = (await asyncio.wait_for(ws.receive_json(), 2))["result"]
+    assert r["rendered"]["notification_title"] == "Casier 4" and "pin_formatted" in r["variables"]
+
+    await ws.send_json({"id": 4, "type": "smart_locker/settings/set",
+                        "notification_title": "Colis casier {{ locker }}",
+                        "msg_email_html": "<b>{{ first_name }}</b> {{ pin_formatted }}"})
+    assert (await asyncio.wait_for(ws.receive_json(), 2))["success"]
+    await hass.services.async_call("smart_locker", "assign", {"locker_id": 5, "recipient_id": jean["id"]}, blocking=True)
+    await hass.services.async_call("smart_locker", "notify", {"locker_id": 5}, blocking=True)
+    pin = hass.states.get("smart_locker.casier_5").attributes["pin_code"]
+    d = sent[-1].data
+    assert d["title"] == "Colis casier 5" and d["target"] == ["j@d.fr"]
+    assert d["data"]["html"] == f"<b>Jean</b> {pin[:3]}-{pin[3:]}"
+    assert d["message"].startswith("Bonjour Jean, un colis a été déposé dans le casier 5.")
+    assert "badge" not in d["message"]
+    assert hass.states.get("smart_locker.casier_5").state == "en_attente"
+
+
+async def test_lovelace_resource_versioned(hass, hass_storage, aioclient_mock):
+    """Une ressource existante sans version est mise a jour avec ?v=<version>."""
+    hass_storage["lovelace_resources"] = {
+        "version": 1, "key": "lovelace_resources",
+        "data": {"items": [{"id": "r1", "res_type": "module", "url": "/smart_locker/smart-locker-card.js"}]},
+    }
+    assert await async_setup_component(hass, "http", {})
+    assert await async_setup_component(hass, "lovelace", {})
+    assert await async_setup_component(hass, "smart_locker", {"smart_locker": None})
+    await hass.async_block_till_done()
+    from custom_components.smart_locker import _RESOURCE_URL
+    res = hass.data["lovelace"].resources
+    urls = [r["url"] for r in res.async_items()]
+    assert urls == [_RESOURCE_URL] and "?v=" in _RESOURCE_URL
+
+
+async def test_lockers_survive_restart(hass, hass_storage, aioclient_mock):
+    """Etat, PIN, assignations et notifications sont relus au demarrage."""
+    hass_storage["smart_locker_lockers"] = {"version": 1, "key": "smart_locker_lockers", "data": {"lockers": {
+        "4": {"state": "en_attente", "assigned": ["r1"], "pin_code": "123456",
+              "retrieved_at": None, "notified_at": {"r1": "01/10 10:00"}}}}}
+    hass_storage["smart_locker_recipients"] = {"version": 1, "key": "smart_locker_recipients", "data": {
+        "recipients": [{"id": "r1", "first_name": "Anne", "last_name": "Martin"}], "settings": {}}}
+    presses = async_mock_service(hass, "button", "press")
+    with patch("custom_components.smart_locker._async_setup_frontend"):
+        assert await async_setup_component(hass, "smart_locker", {"smart_locker": None})
+        await hass.async_block_till_done()
+    st = hass.states.get("smart_locker.casier_4")
+    assert st.state == "en_attente" and st.attributes["pin_code"] == "123456"
+    assert st.attributes["assigned_recipients"] == [{"id": "r1", "name": "Anne Martin", "notified_at": "01/10 10:00"}]
+    assert hass.states.get("smart_locker.casier_1").state == "libre"
+    # Le PIN restaure ouvre bien le casier
+    hass.bus.async_fire("esphome.keypad_code_entered", {"code": "123456"}); await hass.async_block_till_done()
+    assert presses[-1].data["entity_id"] == ["button.smart_locker_relais_ouvrir_casier_4"]
+    # Toute modification est sauvegardee
+    await hass.services.async_call("smart_locker", "reset", {"locker_id": 4}, blocking=True)
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=5)); await hass.async_block_till_done()
+    assert hass_storage["smart_locker_lockers"]["data"]["lockers"]["4"]["state"] == "libre"
+
+
+async def test_rename_keeps_assignment(hass, hass_ws_client, setup):
+    ws = await hass_ws_client(hass)
+    await hass.services.async_call("smart_locker", "assign", {"locker_id": 7, "recipient_id": "r-jean"}, blocking=True)
+    await ws.send_json({"id": 1, "type": "smart_locker/recipients/update", "recipient_id": "r-jean",
+                        "first_name": "Jean-Paul", "last_name": "Dupont"})
+    await asyncio.wait_for(ws.receive_json(), 2); await hass.async_block_till_done()
+    st = hass.states.get("smart_locker.casier_7")
+    assert st.attributes["assigned_users"] == ["Jean-Paul Dupont"] and st.state == "occupé"
+    # Suppression : l'assignation reste visible, et peut etre retiree
+    await ws.send_json({"id": 2, "type": "smart_locker/recipients/delete", "recipient_id": "r-jean"})
+    await asyncio.wait_for(ws.receive_json(), 2); await hass.async_block_till_done()
+    assert hass.states.get("smart_locker.casier_7").attributes["assigned_users"] == ["Destinataire supprimé"]
+    await hass.services.async_call("smart_locker", "unassign", {"locker_id": 7, "recipient_id": "r-jean"}, blocking=True)
+    assert hass.states.get("smart_locker.casier_7").state == "libre"
+    # Nom inconnu refuse
+    from homeassistant.exceptions import ServiceValidationError
+    with pytest.raises(ServiceValidationError):
+        await hass.services.async_call("smart_locker", "assign", {"locker_id": 7, "user": "Personne"}, blocking=True)
+
+
+async def test_door_not_opened_and_admin_open(hass, setup):
+    presses = setup
+    await hass.services.async_call("smart_locker", "assign", {"locker_id": 8, "user": "Jean Dupont"}, blocking=True)
+    pin = hass.states.get("smart_locker.casier_8").attributes["pin_code"]
+    hass.bus.async_fire("esphome.keypad_code_entered", {"code": pin}); await hass.async_block_till_done()
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=31)); await hass.async_block_till_done()
+    # Porte jamais ouverte : le colis reste en attente, l'ouverture tardive ne compte plus
+    hass.states.async_set("binary_sensor.smart_locker_relais_porte_casier_8", "on"); await hass.async_block_till_done()
+    assert hass.states.get("smart_locker.casier_8").state == "occupé"
+    hass.states.async_set("binary_sensor.smart_locker_relais_porte_casier_8", "off"); await hass.async_block_till_done()
+    # Le PIN reste valide
+    hass.bus.async_fire("esphome.keypad_code_entered", {"code": pin}); await hass.async_block_till_done()
+    assert len(presses) == 2
+    # Bouton Ouvrir du dashboard : impulsion sans changement d'etat
+    await hass.services.async_call("smart_locker", "open", {"locker_id": 1}, blocking=True)
+    assert presses[-1].data["entity_id"] == ["button.smart_locker_relais_ouvrir_casier_1"]
+    assert hass.states.get("smart_locker.casier_1").state == "libre"

@@ -63,8 +63,8 @@ class LedController:
         self.hass = hass
         self._lockers = lockers
         self._session_until = 0.0
-        # Scene temporaire prioritaire : ("access", locker_id, fin) ou ("error", None, fin)
-        self._scene: tuple[str, int | None, float] | None = None
+        # Scene temporaire prioritaire : ("access", {casiers}, fin) ou ("error", None, fin)
+        self._scene: tuple[str, frozenset[int] | None, float] | None = None
         self._door_alerts: set[int] = set()
         self._door_timers: dict[int, CALLBACK_TYPE] = {}
         self._lock = asyncio.Lock()
@@ -98,15 +98,15 @@ class LedController:
         self.render()
 
     @callback
-    def show_access(self, locker_id: int) -> None:
-        """Code correct : seul le casier concerne clignote en vert."""
-        self._scene = ("access", locker_id, time.monotonic() + LED_ACCESS_SECONDS)
+    def show_access(self, *locker_ids: int) -> None:
+        """Code / badge correct : seuls les casiers qui s'ouvrent clignotent en vert."""
+        self._scene = ("access", frozenset(locker_ids), time.monotonic() + LED_ACCESS_SECONDS)
         self._render_later(LED_ACCESS_SECONDS)
         self.activity()
 
     @callback
     def show_error(self) -> None:
-        """Code incorrect : tous les casiers clignotent en rouge."""
+        """Code incorrect, saisie abandonnee ou badge inconnu : tous les casiers en rouge."""
         self._scene = ("error", None, time.monotonic() + LED_ERROR_SECONDS)
         self._render_later(LED_ERROR_SECONDS)
         self.activity()
@@ -155,7 +155,7 @@ class LedController:
         specs: dict[int, tuple | None] = {}
         if self._scene and self._scene[0] == "access":
             for lid in LOCKER_IDS:
-                specs[lid] = (COLOR_GREEN, FX_BLINK) if lid == self._scene[1] else _OFF
+                specs[lid] = (COLOR_GREEN, FX_BLINK) if lid in self._scene[1] else _OFF
         elif self._scene and self._scene[0] == "error":
             for lid in LOCKER_IDS:
                 specs[lid] = (COLOR_RED, FX_BLINK)

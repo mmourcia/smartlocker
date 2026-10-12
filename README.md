@@ -1,6 +1,6 @@
 # Smart Locker - Casiers connectés pilotés par Home Assistant
 
-Une personne dépose un colis dans un casier libre, l'affecte à un destinataire via une interface mobile, et ce destinataire reçoit une notification puis récupère son colis en tapant son code personnel devant le meuble. Pas de clé, pas de badge obligatoire, pas d'attente.
+Une personne dépose un colis dans un casier libre, l'affecte à un destinataire via une interface mobile, et ce destinataire reçoit une notification puis récupère son colis en tapant son code personnel devant le meuble, ou en présentant son badge s'il en a un. Pas de clé, pas de badge obligatoire, pas d'attente.
 
 ![Visuel IA](./docs/img/visuel_ia.png)
 
@@ -24,9 +24,9 @@ L'éclairage s'allume dès qu'on touche le digicode (ou qu'on ouvre une porte) e
 |---|---|
 | 🟢 Vert fixe | Casier libre (ou colis déjà récupéré) |
 | 🔵 Bleu fixe | Colis en attente |
-| 🟢 Vert clignotant (un seul, autres éteints) | Code correct, ce casier va s'ouvrir |
+| 🟢 Vert clignotant (autres éteints) | Code ou badge correct, ce(s) casier(s) s'ouvre(nt) |
 | 🟠 Orange clignotant | Porte ouverte depuis trop longtemps (visible même éclairage éteint) |
-| 🔴 Rouge clignotant (tous, 3s) | Code incorrect |
+| 🔴 Rouge clignotant (tous, 3s) | Code incorrect, saisie abandonnée (10 s sans touche) ou badge inconnu : on peut recommencer |
 | 🔴 Rouge fixe | Casier hors service |
 
 ---
@@ -35,8 +35,8 @@ L'éclairage s'allume dès qu'on touche le digicode (ou qu'on ouvre une porte) e
 
 1. Le gestionnaire dépose le colis et assigne le casier à un destinataire depuis le dashboard HA → un **PIN à 6 chiffres** est généré.
 2. Il clique sur **Notifier** → le destinataire reçoit son PIN par email, SMS et/ou app mobile.
-3. Le destinataire tape ses 6 chiffres sur le digicode → la serrure du casier s'ouvre.
-4. Le gestionnaire **libère** le casier pour le remettre à disposition.
+3. Le destinataire tape ses 6 chiffres sur le digicode, ou présente son badge (qui ouvre tous ses casiers en attente) → la serrure s'ouvre.
+4. Quand la porte est refermée, le casier se libère automatiquement.
 
 Détails : [dashboard admin](docs/home-assistant/dashboard.md).
 
@@ -78,8 +78,10 @@ Tout ce qu'il faut pour construire et configurer le système :
 | ✅ | Gestion des destinataires et notifications email / SMS / app mobile |
 | ✅ | Éclairage WLED selon l'état des casiers, allumé sur activité digicode |
 | ✅ | Retour visuel code correct / incorrect, alerte porte restée ouverte |
-| 🔜 | Détection de présence mmWave pour allumer l'éclairage à l'approche |
-| 💡 | Persistance des états des casiers entre redémarrages de HA |
+| ✅ | Badges RFID : enrôlement depuis le lecteur, ouverture de tous les colis du destinataire |
+| ✅ | Messages (titre, SMS, email) personnalisables par templates |
+| ✅ | Casiers conservés après un redémarrage de HA ou une coupure de courant |
+| ✅ | Récupération confirmée par l'ouverture de la porte, libération automatique à la fermeture |
 
 ---
 

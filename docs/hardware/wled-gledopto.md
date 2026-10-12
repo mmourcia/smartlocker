@@ -72,8 +72,8 @@ Issu des presets 120-127 et appliqué par le composant :
 | Casier libre ou colis récupéré | Vert `0,255,0` | Fixe | Le casier |
 | Colis en attente (occupé / notifié) | Bleu `0,75,255` | Fixe | Le casier |
 | Casier hors service | Rouge `255,0,0` | Fixe | Le casier |
-| Code correct | Vert `0,255,0` | Blink (8 s) | Le casier qui s'ouvre, **tous les autres éteints** |
-| Code incorrect | Rouge `255,0,0` | Blink (3 s) | Tous les casiers |
+| Code ou badge correct | Vert `0,255,0` | Blink (8 s) | Le(s) casier(s) qui s'ouvre(nt), **tous les autres éteints** |
+| Code incorrect, saisie abandonnée (timeout digicode), badge inconnu ou sans colis | Rouge `255,0,0` | Blink (3 s) | Tous les casiers |
 | Porte ouverte trop longtemps | Orange `255,110,0` | Blink | Le casier, jusqu'à fermeture |
 
 ## Quand l'éclairage s'allume
@@ -87,8 +87,6 @@ Les LED sont **éteintes par défaut**. Elles s'allument sur activité devant le
 
 Elles s'éteignent après la *durée d'allumage* (30 s par défaut) sans nouvelle activité. Une alerte
 « porte ouverte trop longtemps » reste visible même hors activité (seul le casier en alerte clignote).
-
-À terme, un radar mmWave remplacera ou complétera le déclencheur digicode.
 
 ## Pilotage depuis Home Assistant
 

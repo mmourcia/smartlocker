@@ -11,10 +11,16 @@ assign:
           min: 1
           max: 8
           mode: box
+    recipient_id:
+      name: Identifiant du destinataire
+      description: Identifiant interne (stable même si le destinataire est renommé). Utilisé par les cartes.
+      required: false
+      selector:
+        text:
     user:
-      name: Utilisateur
-      description: Destinataire au format « Prénom Nom » (tel que saisi dans la carte Destinataires)
-      required: true
+      name: Destinataire (nom)
+      description: Alternative à recipient_id - « Prénom Nom » tel que saisi dans la carte Destinataires
+      required: false
       selector:
         text:
 
@@ -31,16 +37,22 @@ unassign:
           min: 1
           max: 8
           mode: box
+    recipient_id:
+      name: Identifiant du destinataire
+      description: Identifiant interne du destinataire à retirer
+      required: false
+      selector:
+        text:
     user:
-      name: Utilisateur
-      description: Nom de l'utilisateur à retirer
-      required: true
+      name: Destinataire (nom)
+      description: Alternative à recipient_id - « Prénom Nom » du destinataire à retirer
+      required: false
       selector:
         text:
 
 open:
   name: Ouvrir un casier
-  description: Déclenche l'impulsion relais pour ouvrir la serrure du casier.
+  description: Déclenche l'impulsion relais (dépôt, vérification). Ne change pas l'état du casier.
   fields:
     locker_id:
       name: Numéro du casier

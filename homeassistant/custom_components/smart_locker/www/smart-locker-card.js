@@ -303,7 +303,7 @@ class SmartLockerCard extends HTMLElement {
     const current = select.value;
     select.innerHTML = '<option value="">-- Choisir un destinataire --</option>' +
       this._recipients.map(r =>
-        `<option value="${r.first_name} ${r.last_name}">${r.last_name} ${r.first_name}</option>`
+        `<option value="${r.id}">${r.last_name} ${r.first_name}</option>`
       ).join('');
     select.value = current;
   }
@@ -316,7 +316,7 @@ class SmartLockerCard extends HTMLElement {
     if (!entity) return;
 
     const state = entity.state;
-    const users = entity.attributes.assigned_users || [];
+    const users = entity.attributes.assigned_recipients || [];
     const cfg = LOCKER_STATES[state] || { color: '#9E9E9E', icon: 'mdi:help', label: state };
 
     // Etat métier
@@ -359,7 +359,6 @@ class SmartLockerCard extends HTMLElement {
 
     // Badges utilisateurs avec bouton de désassignation
     const usersEl = sr.getElementById('users');
-    const notifiedAt = entity.attributes.notified_at || {};
     usersEl.innerHTML = '';
     if (users.length) {
       users.forEach(u => {
@@ -369,17 +368,17 @@ class SmartLockerCard extends HTMLElement {
         const top = document.createElement('div');
         top.className = 'user-badge-top';
         const name = document.createElement('span');
-        name.textContent = u;
+        name.textContent = u.name;
         const removeBtn = document.createElement('button');
         removeBtn.className = 'user-badge-remove';
         removeBtn.textContent = '×';
-        removeBtn.title = `Retirer ${u}`;
-        removeBtn.onclick = () => this._svc('unassign', { user: u });
+        removeBtn.title = `Retirer ${u.name}`;
+        removeBtn.onclick = () => this._svc('unassign', { recipient_id: u.id });
         top.appendChild(name);
         top.appendChild(removeBtn);
         badge.appendChild(top);
 
-        const notifTime = notifiedAt[u];
+        const notifTime = u.notified_at;
         if (notifTime) {
           const notifEl = document.createElement('div');
           notifEl.className = 'user-badge-notif';
@@ -403,9 +402,9 @@ class SmartLockerCard extends HTMLElement {
 
   _assignUser() {
     const select = this.shadowRoot.getElementById('user-select');
-    const user = select.value.trim();
-    if (!user) return;
-    this._svc('assign', { user });
+    const recipient_id = select.value;
+    if (!recipient_id) return;
+    this._svc('assign', { recipient_id });
     select.value = '';
   }
 
@@ -443,6 +442,27 @@ const RCSS = `
   }
   .card-title ha-icon { --mdc-icon-size: 20px; color: var(--primary-color); }
 
+  /* Enrôlement badge */
+  .enroll {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin-bottom: 14px;
+    font-size: 0.85em;
+    background: var(--secondary-background-color);
+    border-left: 4px solid var(--primary-color);
+  }
+  .enroll.ok    { border-left-color: #4CAF50; }
+  .enroll.warn  { border-left-color: #FF9800; }
+  .enroll.err   { border-left-color: #F44336; }
+  .enroll .msg  { flex: 1; min-width: 180px; }
+  .enroll ha-icon { --mdc-icon-size: 20px; }
+  .badge-id { font-family: monospace; font-size: 0.9em; }
+  .badge-cell { display: flex; align-items: center; gap: 2px; white-space: nowrap; }
+
   /* Paramètres */
   .settings-row {
     display: flex;
@@ -472,6 +492,7 @@ const RCSS = `
     min-width: 0;
   }
 
+  .table-wrap { overflow-x: auto; }
   table { width: 100%; border-collapse: collapse; font-size: 0.83em; }
   th {
     text-align: left;
@@ -625,7 +646,6 @@ class SmartLockerRecipientsCard extends HTMLElement {
     super();
     this.attachShadow({ mode: 'open' });
     this._recipients = [];
-    this._settings = {};
     this._loaded = false;
   }
 
@@ -647,29 +667,21 @@ class SmartLockerRecipientsCard extends HTMLElement {
             <ha-icon icon="mdi:plus"></ha-icon>Ajouter
           </button>
         </div>
-        <div class="settings-row" id="settings-row">
-          <ha-icon icon="mdi:email-outline" style="--mdc-icon-size:16px;color:var(--secondary-text-color);flex-shrink:0;"></ha-icon>
-          <span class="settings-label">Objet des notifs&nbsp;:</span>
-          <span class="settings-value" id="settings-value">…</span>
-          <button class="r-icon-btn" id="settings-edit" title="Modifier l'objet">
-            <ha-icon icon="mdi:pencil"></ha-icon>
-          </button>
-        </div>
+        <div id="enroll-container"></div>
         <div id="form-container"></div>
-        <table>
+        <div class="table-wrap"><table>
           <thead>
             <tr>
-              <th>Prénom</th><th>Nom</th><th>Tél mobile</th><th>Email</th><th>Notifs</th><th></th>
+              <th>Prénom</th><th>Nom</th><th>Tél mobile</th><th>Email</th><th>Notifs</th><th>Badge</th><th></th>
             </tr>
           </thead>
           <tbody id="tbody">
-            <tr><td colspan="6" class="empty">Chargement…</td></tr>
+            <tr><td colspan="7" class="empty">Chargement…</td></tr>
           </tbody>
-        </table>
+        </table></div>
       </ha-card>
     `;
     this.shadowRoot.getElementById('btn-add').onclick = () => this._showForm(null);
-    this.shadowRoot.getElementById('settings-edit').onclick = () => this._editSettings();
   }
 
   set hass(hass) {
@@ -679,69 +691,9 @@ class SmartLockerRecipientsCard extends HTMLElement {
 
   async _load() {
     try {
-      [this._recipients, this._settings] = await Promise.all([
-        this._hass.callWS({ type: 'smart_locker/recipients/list' }),
-        this._hass.callWS({ type: 'smart_locker/settings/get' }),
-      ]);
-    } catch (_) { this._recipients = []; this._settings = {}; }
-    this._renderSettings();
+      this._recipients = await this._hass.callWS({ type: 'smart_locker/recipients/list' });
+    } catch (_) { this._recipients = []; }
     this._renderTable();
-  }
-
-  _renderSettings() {
-    const el = this.shadowRoot.getElementById('settings-value');
-    if (el) el.textContent = this._settings.notification_title || '—';
-  }
-
-  _editSettings() {
-    const row = this.shadowRoot.getElementById('settings-row');
-    const current = this._settings.notification_title || '';
-    row.innerHTML = `
-      <ha-icon icon="mdi:email-outline" style="--mdc-icon-size:16px;color:var(--secondary-text-color);flex-shrink:0;"></ha-icon>
-      <span class="settings-label">Objet&nbsp;:</span>
-      <input class="settings-input" id="settings-input" type="text" value="${this._esc(current)}">
-      <button class="r-icon-btn" id="settings-save" title="Enregistrer"><ha-icon icon="mdi:check"></ha-icon></button>
-      <button class="r-icon-btn" id="settings-cancel" title="Annuler"><ha-icon icon="mdi:close"></ha-icon></button>
-    `;
-    const input = this.shadowRoot.getElementById('settings-input');
-    this.shadowRoot.getElementById('settings-cancel').onclick = () => {
-      this._renderSettings();
-      this._rebindSettingsEdit();
-    };
-    this.shadowRoot.getElementById('settings-save').onclick = () => this._saveSettings();
-    input.focus(); input.select();
-    input.addEventListener('keydown', e => {
-      if (e.key === 'Enter') this._saveSettings();
-      if (e.key === 'Escape') this.shadowRoot.getElementById('settings-cancel').click();
-    });
-  }
-
-  async _saveSettings() {
-    const input = this.shadowRoot.getElementById('settings-input');
-    if (!input) return;
-    const notification_title = input.value.trim();
-    if (!notification_title) return;
-    try {
-      this._settings = await this._hass.callWS({
-        type: 'smart_locker/settings/set', notification_title
-      });
-    } catch (err) { console.error('SmartLocker settings save:', err); }
-    this._renderSettings();
-    this._rebindSettingsEdit();
-  }
-
-  _rebindSettingsEdit() {
-    const row = this.shadowRoot.getElementById('settings-row');
-    if (!row) return;
-    row.innerHTML = `
-      <ha-icon icon="mdi:email-outline" style="--mdc-icon-size:16px;color:var(--secondary-text-color);flex-shrink:0;"></ha-icon>
-      <span class="settings-label">Objet des notifs&nbsp;:</span>
-      <span class="settings-value" id="settings-value">${this._esc(this._settings.notification_title || '—')}</span>
-      <button class="r-icon-btn" id="settings-edit" title="Modifier l'objet">
-        <ha-icon icon="mdi:pencil"></ha-icon>
-      </button>
-    `;
-    this.shadowRoot.getElementById('settings-edit').onclick = () => this._editSettings();
   }
 
   _renderTable() {
@@ -749,7 +701,7 @@ class SmartLockerRecipientsCard extends HTMLElement {
     if (!tbody) return;
     tbody.innerHTML = '';
     if (!this._recipients.length) {
-      tbody.innerHTML = '<tr><td colspan="6" class="empty">Aucun destinataire — cliquez sur Ajouter.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" class="empty">Aucun destinataire — cliquez sur Ajouter.</td></tr>';
       return;
     }
     for (const r of this._recipients) {
@@ -766,7 +718,19 @@ class SmartLockerRecipientsCard extends HTMLElement {
               : '<span class="svc-badge-none">—</span>'}
           </div>
         </td>
+        <td>
+          <div class="badge-cell">
+            ${r.badge_id
+              ? `<span class="badge-id">${this._esc(r.badge_id)}</span>
+                 <button class="r-icon-btn del" data-id="${r.id}" data-action="unbadge" title="Retirer le badge">
+                   <ha-icon icon="mdi:close"></ha-icon></button>`
+              : '<span class="svc-badge-none">—</span>'}
+          </div>
+        </td>
         <td class="col-actions">
+          <button class="r-icon-btn" data-id="${r.id}" data-action="enroll" title="Enrôler un badge (le passer devant le lecteur)">
+            <ha-icon icon="mdi:card-account-details-outline"></ha-icon>
+          </button>
           <button class="r-icon-btn" data-id="${r.id}" data-action="edit" title="Modifier">
             <ha-icon icon="mdi:pencil"></ha-icon>
           </button>
@@ -786,7 +750,117 @@ class SmartLockerRecipientsCard extends HTMLElement {
     tbody.querySelectorAll('[data-action="delete"]').forEach(btn =>
       btn.addEventListener('click', () => this._delete(btn.dataset.id))
     );
+    tbody.querySelectorAll('[data-action="enroll"]').forEach(btn =>
+      btn.addEventListener('click', () => this._enroll(btn.dataset.id))
+    );
+    tbody.querySelectorAll('[data-action="unbadge"]').forEach(btn =>
+      btn.addEventListener('click', () => this._unbadge(btn.dataset.id))
+    );
   }
+
+  // ── Badges ───────────────────────────────────────────────────────────────
+
+  _name(id) {
+    const r = this._recipients.find(x => x.id === id);
+    return r ? `${r.first_name} ${r.last_name}` : '?';
+  }
+
+  async _enroll(id) {
+    await this._stopEnroll();
+    const name = this._name(id);
+    try {
+      this._enrollUnsub = await this._hass.connection.subscribeMessage(
+        ev => this._onEnrollEvent(id, name, ev),
+        { type: 'smart_locker/badges/enroll', recipient_id: id },
+      );
+    } catch (err) {
+      this._banner('err', 'mdi:alert-circle-outline', `Enrôlement impossible : ${err.message || err}`, [['Fermer']]);
+    }
+  }
+
+  async _stopEnroll() {
+    clearInterval(this._countdown);
+    if (this._enrollUnsub) {
+      const unsub = this._enrollUnsub;
+      this._enrollUnsub = null;
+      try { await unsub(); } catch (_) { /* connexion fermée */ }
+    }
+  }
+
+  _onEnrollEvent(id, name, ev) {
+    switch (ev.status) {
+      case 'waiting': {
+        let left = ev.timeout;
+        const text = () => `Passez le badge de <b>${this._esc(name)}</b> devant le lecteur… (${left} s)`;
+        this._banner('', 'mdi:contactless-payment', text(), [['Annuler', () => this._stopEnroll()]]);
+        this._countdown = setInterval(() => {
+          left = Math.max(0, left - 1);
+          const msg = this.shadowRoot.querySelector('.enroll .msg');
+          if (msg) msg.innerHTML = text();
+        }, 1000);
+        break;
+      }
+      case 'enrolled':
+        this._stopEnroll();
+        this._banner('ok', 'mdi:check-circle-outline',
+          `Badge <span class="badge-id">${this._esc(ev.badge_id)}</span> attribué à <b>${this._esc(name)}</b>.`, [['OK']]);
+        this._load();
+        break;
+      case 'conflict':
+        this._stopEnroll();
+        this._banner('warn', 'mdi:alert-outline',
+          `Le badge <span class="badge-id">${this._esc(ev.badge_id)}</span> est déjà attribué à <b>${this._esc(ev.owner)}</b>.
+           Le retirer à ${this._esc(ev.owner)} et l'attribuer à <b>${this._esc(name)}</b> ?`,
+          [['Annuler'], ['Réattribuer', () => this._assignBadge(id, ev.badge_id, true), true]]);
+        break;
+      case 'timeout':
+        this._stopEnroll();
+        this._banner('err', 'mdi:timer-off-outline', 'Aucun badge lu, enrôlement annulé.', [['Fermer']]);
+        break;
+      case 'cancelled':
+        this._stopEnroll();
+        break;
+    }
+  }
+
+  async _assignBadge(id, badge_id, force = false) {
+    try {
+      this._recipients = await this._hass.callWS({
+        type: 'smart_locker/badges/assign', recipient_id: id, badge_id, force,
+      });
+      this._renderTable();
+      if (badge_id) {
+        this._banner('ok', 'mdi:check-circle-outline',
+          `Badge <span class="badge-id">${this._esc(badge_id)}</span> attribué à <b>${this._esc(this._name(id))}</b>.`, [['OK']]);
+      }
+    } catch (err) {
+      this._banner('err', 'mdi:alert-circle-outline', this._esc(err.message || err), [['Fermer']]);
+    }
+  }
+
+  _unbadge(id) {
+    if (!confirm(`Retirer le badge de ${this._name(id)} ?`)) return;
+    this._assignBadge(id, '');
+  }
+
+  // Bandeau : actions = [[libellé, callback?, primaire?]] ; tout bouton ferme le bandeau.
+  _banner(kind, icon, html, actions) {
+    const box = this.shadowRoot.getElementById('enroll-container');
+    box.innerHTML = `
+      <div class="enroll ${kind}">
+        <ha-icon icon="${icon}"></ha-icon>
+        <span class="msg">${html}</span>
+        ${actions.map(([label, , primary], i) =>
+          `<button class="r-btn ${primary ? 'r-btn-primary' : 'r-btn-secondary'}" data-i="${i}">${label}</button>`).join('')}
+      </div>`;
+    box.querySelectorAll('button').forEach(btn => btn.onclick = () => {
+      box.innerHTML = '';
+      const cb = actions[btn.dataset.i][1];
+      if (cb) cb();
+    });
+  }
+
+  disconnectedCallback() { this._stopEnroll(); }
 
   _showForm(recipient) {
     const isNew = !recipient;
@@ -1055,5 +1129,185 @@ window.customCards.push({
   type:        'smart-locker-leds-card',
   name:        'Smart Locker — Éclairage',
   description: 'Choix du contrôleur WLED et réglages de l\'éclairage des casiers',
+  preview:     false,
+});
+
+// ─── Carte messages (templates des notifications) ───────────────────────────
+
+const MCSS = RCSS + `
+  .field { min-width: 0; margin-bottom: 10px; }
+  .field input, .field textarea { width: 100%; box-sizing: border-box; }
+  .field textarea {
+    padding: 6px 8px;
+    border: 1px solid var(--divider-color);
+    border-radius: 6px;
+    background: var(--card-background-color);
+    color: var(--primary-text-color);
+    font-size: 0.82em;
+    resize: vertical;
+    font-family: inherit;
+  }
+  .field textarea.code { font-family: monospace; font-size: 0.75em; min-height: 160px; }
+  .field .hint { font-size: 0.7em; color: var(--secondary-text-color); }
+  .vars { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 10px; }
+  .var {
+    font-family: monospace; font-size: 0.72em; padding: 2px 7px; border-radius: 10px;
+    border: 1px solid var(--divider-color); background: var(--card-background-color);
+    color: var(--primary-text-color); cursor: pointer;
+  }
+  .var:hover { border-color: var(--primary-color); }
+  .status { font-size: 0.78em; color: var(--secondary-text-color); margin-right: auto; align-self: center; }
+  .status.err { color: #F44336; }
+  .preview { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+  .preview h4 { margin: 0; font-size: 0.75em; color: var(--secondary-text-color); font-weight: 600; }
+  .preview .box {
+    background: var(--secondary-background-color); border-radius: 8px; padding: 8px 10px;
+    font-size: 0.82em; white-space: pre-wrap; word-break: break-word;
+  }
+  .preview iframe { width: 100%; height: 360px; border: 1px solid var(--divider-color); border-radius: 8px; background: #fff; }
+`;
+
+const MSG_FIELDS = [
+  ['notification_title', 'Titre (objet de l\'email, titre de la notification push)', 'input'],
+  ['msg_text',           'Texte (SMS, notification push, version texte de l\'email)', 'textarea'],
+  ['msg_email_html',     'Email HTML (corps)', 'code'],
+];
+
+class SmartLockerMessagesCard extends HTMLElement {
+  static getStubConfig() { return {}; }
+  constructor() {
+    super();
+    this.attachShadow({ mode: 'open' });
+    this._loaded = false;
+  }
+
+  setConfig(config) { this._config = config || {}; }
+
+  set hass(hass) {
+    this._hass = hass;
+    if (!this._loaded) { this._loaded = true; this._load(); }
+  }
+
+  async _load() {
+    let settings = {}, info = { variables: {}, defaults: {} };
+    try {
+      [settings, info] = await Promise.all([
+        this._hass.callWS({ type: 'smart_locker/settings/get' }),
+        this._hass.callWS({ type: 'smart_locker/messages/preview' }),
+      ]);
+    } catch (err) { console.error('SmartLocker messages load:', err); }
+    this._defaults = info.defaults || {};
+    this._render(settings, info.variables || {});
+  }
+
+  _render(settings, variables) {
+    const field = ([key, label, kind]) => {
+      const v = this._esc(settings[key] || '');
+      const input = kind === 'input'
+        ? `<input id="f-${key}" type="text" value="${v}">`
+        : `<textarea id="f-${key}" class="${kind === 'code' ? 'code' : ''}" rows="4">${v}</textarea>`;
+      return `<div class="field"><label>${label}</label>${input}</div>`;
+    };
+    this.shadowRoot.innerHTML = `
+      <style>${MCSS}</style>
+      <ha-card>
+        <div class="card-header">
+          <div class="card-title"><ha-icon icon="mdi:message-text-outline"></ha-icon>Messages aux destinataires</div>
+        </div>
+        <div class="form">
+          <div class="svc-label">Variables (clic = insérer dans le champ actif) — templates Jinja Home Assistant</div>
+          <div class="vars">
+            ${Object.entries(variables).map(([k, d]) =>
+              `<button class="var" data-var="${this._esc(k)}" title="${this._esc(d)}">{{ ${this._esc(k)} }}</button>`).join('')}
+          </div>
+          ${MSG_FIELDS.map(field).join('')}
+          <div class="field"><span class="hint">
+            Exemple de condition : <code>{% if has_badge %}ou présentez votre badge{% endif %}</code>
+          </span></div>
+          <div class="form-actions">
+            <span class="status" id="status"></span>
+            <button class="r-btn r-btn-secondary" id="b-defaults">Valeurs par défaut</button>
+            <button class="r-btn r-btn-secondary" id="b-preview">Aperçu</button>
+            <button class="r-btn r-btn-primary" id="b-save">Enregistrer</button>
+          </div>
+        </div>
+        <div class="preview" id="preview"></div>
+      </ha-card>
+    `;
+    const sr = this.shadowRoot;
+    this._active = sr.getElementById('f-msg_text');
+    MSG_FIELDS.forEach(([key]) => sr.getElementById(`f-${key}`).addEventListener('focus', e => { this._active = e.target; }));
+    sr.querySelectorAll('.var').forEach(btn => btn.onclick = () => this._insert(`{{ ${btn.dataset.var} }}`));
+    sr.getElementById('b-preview').onclick = () => this._preview();
+    sr.getElementById('b-save').onclick = () => this._save();
+    sr.getElementById('b-defaults').onclick = () => {
+      if (!confirm('Remplacer les trois templates par les valeurs par défaut (non enregistré tant que vous ne cliquez pas sur Enregistrer) ?')) return;
+      MSG_FIELDS.forEach(([key]) => { sr.getElementById(`f-${key}`).value = this._defaults[key] || ''; });
+      this._preview();
+    };
+  }
+
+  _insert(text) {
+    const el = this._active;
+    if (!el) return;
+    const start = el.selectionStart ?? el.value.length, end = el.selectionEnd ?? el.value.length;
+    el.value = el.value.slice(0, start) + text + el.value.slice(end);
+    el.focus();
+    el.selectionStart = el.selectionEnd = start + text.length;
+  }
+
+  _values() {
+    return Object.fromEntries(MSG_FIELDS.map(([key]) => [key, this.shadowRoot.getElementById(`f-${key}`).value]));
+  }
+
+  async _preview() {
+    const box = this.shadowRoot.getElementById('preview');
+    try {
+      const res = await this._hass.callWS({ type: 'smart_locker/messages/preview', ...this._values() });
+      const r = res.rendered, sms = r.msg_text.length;
+      box.innerHTML = `
+        <h4>Titre</h4><div class="box" id="p-title"></div>
+        <h4>Texte — ${sms} caractères (${Math.ceil(sms / 153) || 1} SMS environ ; accents et emoji réduisent la taille d'un SMS)</h4>
+        <div class="box" id="p-text"></div>
+        <h4>Email</h4><iframe sandbox="" id="p-html"></iframe>
+        <span class="hint" style="font-size:0.7em;color:var(--secondary-text-color)">
+          Exemple pour ${this._esc(res.sample.full_name)}, casier ${res.sample.locker}, PIN ${res.sample.pin_formatted}, avec badge.</span>`;
+      box.querySelector('#p-title').textContent = r.notification_title;
+      box.querySelector('#p-text').textContent = r.msg_text;
+      box.querySelector('#p-html').srcdoc = r.msg_email_html;
+      this._status('');
+    } catch (err) {
+      box.innerHTML = '';
+      this._status(`Template invalide : ${err.message || err}`, true);
+    }
+  }
+
+  async _save() {
+    try {
+      await this._hass.callWS({ type: 'smart_locker/settings/set', ...this._values() });
+      this._status('Enregistré ✓');
+    } catch (err) { this._status(`Erreur : ${err.message || err}`, true); }
+  }
+
+  _status(text, error = false) {
+    const el = this.shadowRoot.getElementById('status');
+    if (!el) return;
+    el.textContent = text;
+    el.classList.toggle('err', error);
+  }
+
+  _esc(s) {
+    return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  getCardSize() { return 6; }
+}
+
+customElements.define('smart-locker-messages-card', SmartLockerMessagesCard);
+
+window.customCards.push({
+  type:        'smart-locker-messages-card',
+  name:        'Smart Locker — Messages',
+  description: 'Templates du titre, du SMS et de l\'email envoyés aux destinataires',
   preview:     false,
 });
