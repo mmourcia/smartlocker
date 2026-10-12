@@ -5,11 +5,7 @@ from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 
-from .const import DOMAIN, STORE_KEY_RECIPIENTS, STORE_VERSION, DEFAULT_NOTIFICATION_TITLE
-
-_DEFAULT_SETTINGS = {
-    "notification_title": DEFAULT_NOTIFICATION_TITLE,
-}
+from .const import DOMAIN, STORE_KEY_RECIPIENTS, STORE_VERSION, DEFAULT_SETTINGS
 
 
 async def async_setup_recipients(hass: HomeAssistant) -> None:
@@ -17,7 +13,7 @@ async def async_setup_recipients(hass: HomeAssistant) -> None:
     data = await store.async_load() or {}
     hass.data[DOMAIN]["store"] = store
     hass.data[DOMAIN]["recipients"] = data.get("recipients", [])
-    hass.data[DOMAIN]["settings"] = {**_DEFAULT_SETTINGS, **data.get("settings", {})}
+    hass.data[DOMAIN]["settings"] = {**DEFAULT_SETTINGS, **data.get("settings", {})}
 
     websocket_api.async_register_command(hass, ws_list_recipients)
     websocket_api.async_register_command(hass, ws_add_recipient)
@@ -120,10 +116,18 @@ async def ws_get_settings(hass: HomeAssistant, connection: websocket_api.ActiveC
 
 @websocket_api.websocket_command({
     vol.Required("type"): "smart_locker/settings/set",
-    vol.Required("notification_title"): str,
+    vol.Optional("notification_title"): vol.All(str, vol.Length(min=1)),
+    vol.Optional("led_entry_id"):       str,
+    vol.Optional("led_brightness"):     vol.All(vol.Coerce(int), vol.Range(min=1, max=255)),
+    vol.Optional("led_timeout"):        vol.All(vol.Coerce(int), vol.Range(min=5, max=3600)),
+    vol.Optional("door_alert_delay"):   vol.All(vol.Coerce(int), vol.Range(min=5, max=3600)),
 })
 @websocket_api.async_response
 async def ws_set_settings(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict) -> None:
-    hass.data[DOMAIN]["settings"]["notification_title"] = msg["notification_title"]
+    settings = hass.data[DOMAIN]["settings"]
+    for key in DEFAULT_SETTINGS:
+        if key in msg:
+            settings[key] = msg[key]
     await _save(hass)
-    connection.send_result(msg["id"], hass.data[DOMAIN]["settings"])
+    hass.data[DOMAIN]["leds"].settings_changed()
+    connection.send_result(msg["id"], settings)

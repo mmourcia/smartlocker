@@ -2,10 +2,10 @@
 
 ## Installation
 
-Copier le dossier `custom_components/smart_locker/` dans `config/custom_components/` de Home Assistant, puis redémarrer HA.
+Copier le dossier [`homeassistant/custom_components/smart_locker/`](../../homeassistant/custom_components/smart_locker/) dans `config/custom_components/` de Home Assistant, puis redémarrer HA.
 
 Le composant enregistre automatiquement au démarrage :
-- les entités des 8 casiers (`smart_locker.casier_N`)
+- les entités des 7 casiers utiles (`smart_locker.casier_N`, N = 1, 2, 4…8 — la case 3 est le compartiment technique)
 - le fichier JS des cartes Lovelace (`/smart_locker/smart-locker-card.js`)
 - la ressource Lovelace (plus besoin de l'ajouter manuellement)
 
@@ -87,15 +87,14 @@ notify:
 
 ```yaml
 smart_locker:
-  # Optionnel — capteur digicode ESPHome (valeur par défaut ci-dessous)
-  pin_sensor: sensor.smart_locker_digicode_code_pin_digicode
 ```
 
-La clé `pin_sensor` n'est à renseigner que si le nom d'entité ESPHome diffère de la valeur par défaut.
+Aucune option. L'ancienne clé `pin_sensor` est obsolète et peut être retirée (le PIN est reçu par
+événement ESPHome).
 
-> Les destinataires (prénom, nom, téléphone, email, services de notification) et l'objet des
-> notifications se gèrent entièrement depuis la carte **Destinataires** — aucune autre
-> modification de `configuration.yaml` requise.
+> Les destinataires, l'objet des notifications et le contrôleur LED se gèrent entièrement
+> depuis les cartes **Destinataires** et **Éclairage** — aucune autre modification de
+> `configuration.yaml` requise.
 
 ---
 
@@ -109,7 +108,10 @@ cards:
   # Carte de gestion des destinataires et paramètres de notification
   - type: custom:smart-locker-recipients-card
 
-  # Grille des 8 casiers
+  # Choix du contrôleur WLED et réglages de l'éclairage
+  - type: custom:smart-locker-leds-card
+
+  # Grille des 7 casiers (la case 3 est le compartiment technique)
   - type: grid
     columns: 2
     square: false
@@ -118,8 +120,6 @@ cards:
         locker_id: 1
       - type: custom:smart-locker-card
         locker_id: 2
-      - type: custom:smart-locker-card
-        locker_id: 3
       - type: custom:smart-locker-card
         locker_id: 4
       - type: custom:smart-locker-card
@@ -132,7 +132,7 @@ cards:
         locker_id: 8
 ```
 
-Les deux types de cartes peuvent aussi être placées sur des vues séparées
+Les trois types de cartes peuvent aussi être placés sur des vues séparées
 — elles proviennent du même fichier JS, aucune ressource supplémentaire à déclarer.
 
 ---
@@ -148,6 +148,21 @@ Les deux types de cartes peuvent aussi être placées sur des vues séparées
 - **Formulaire** : 4 champs texte + liste des services `notify.*` disponibles dans HA (cases à cocher).
   Sélectionner un ou plusieurs services par destinataire. Un destinataire peut recevoir à la fois
   un email et un SMS si les deux services sont cochés.
+
+### Carte Éclairage (`smart-locker-leds-card`)
+
+| Élément | Description |
+|---|---|
+| **Contrôleur WLED** | Liste des appareils de l'intégration WLED de HA. *Aucun* = LED désactivées |
+| **Luminosité** | Luminosité globale (1-255) |
+| **Durée d'allumage** | Secondes d'éclairage après la dernière touche / porte |
+| **Alerte porte ouverte** | Secondes avant le clignotement orange d'une porte restée ouverte |
+| **Enregistrer** | Sauvegarde et applique immédiatement |
+| **Tester** | Allume l'éclairage comme si quelqu'un tapait sur le digicode |
+| Légende | Rappel du code couleur |
+
+Prérequis : le Gledopto doit être ajouté dans HA (**Paramètres › Appareils et services › WLED**),
+avec ses segments configurés (voir [Éclairage WLED](../hardware/wled-gledopto.md#segments)).
 
 ### Carte Casier (`smart-locker-card`)
 
@@ -179,5 +194,5 @@ Les deux types de cartes peuvent aussi être placées sur des vues séparées
 1. Déposer le colis dans le casier
 2. Assigner le destinataire via le dropdown → le casier passe en **Occupé**, un PIN à 6 chiffres est généré
 3. Cliquer **Notifier** → email/SMS envoyé avec le PIN, casier passe en **En attente**, badge 🔔 horodaté affiché
-4. Le destinataire saisit son PIN sur le digicode → casier s'ouvre automatiquement, passe en **Récupéré**
+4. Le destinataire tape ses 6 chiffres sur le digicode (pas de `#`) → casier s'ouvre automatiquement, passe en **Récupéré**
 5. Cliquer **Libérer** pour remettre le casier à disposition

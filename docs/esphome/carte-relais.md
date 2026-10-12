@@ -10,117 +10,54 @@ La **LC-Relay-ESP32-8R-D5** est une carte tout-en-un combinant :
 
 ## Brochage utilisé
 
-| Fonction | GPIO ESP32 | Composant |
-|---|---|---|
-| Relais casier 1 | GPIO32 | Serrure solénoïde 1 |
-| Relais casier 2 | GPIO33 | Serrure solénoïde 2 |
-| Relais casier 3 | GPIO25 | Serrure solénoïde 3 |
-| Relais casier 4 | GPIO26 | Serrure solénoïde 4 |
-| Relais casier 5 | GPIO27 | Serrure solénoïde 5 |
-| Relais casier 6 | GPIO14 | Serrure solénoïde 6 |
-| Relais casier 7 | GPIO12 | Serrure solénoïde 7 |
-| Relais casier 8 | GPIO13 | Serrure solénoïde 8 |
-| Reed switch 1 | GPIO34 | État porte casier 1 |
-| Reed switch 2 | GPIO35 | État porte casier 2 |
-| Reed switch 3 | GPIO36 | État porte casier 3 |
-| Reed switch 4 | GPIO39 | État porte casier 4 |
-| Reed switch 5 | GPIO4 | État porte casier 5 |
-| Reed switch 6 | GPIO16 | État porte casier 6 |
-| Reed switch 7 | GPIO17 | État porte casier 7 |
-| Reed switch 8 | GPIO5 | État porte casier 8 |
+La case 3 du Kallax est le **compartiment technique** (carte relais, alimentation, bornier) :
+pas de serrure ni de reed switch. Le relais 3 (GPIO25) est laissé libre et n'est pas déclaré
+dans ESPHome. Les numéros de casiers sont conservés (1, 2, 4…8) pour coller à la position
+physique dans le meuble.
 
-> **A vérifier** : les GPIO proposés pour les reed switches (GPIO4, 5, 16, 17, 34, 35, 36, 39) sont
-> théoriquement libres sur un ESP32 standard, mais certains peuvent être utilisés par la carte pour
-> d'autres fonctions selon la version du PCB. Vérifier le pinout exact sur le
-> [forum HACF](https://forum.hacf.fr/t/carte-8-relais-avec-esp32-branchement-usb-uart/48181)
-> avant de câbler.
->
-> GPIO 34, 35, 36 et 39 sont en **entrée uniquement** sur l'ESP32 (pas de pull-up interne).
-> Ajouter une résistance pull-up externe 10kΩ vers le 3,3V pour chacun de ces quatre GPIO.
+| Casier | Relais (serrure) | Reed switch (porte) |
+|---|---|---|
+| 1 | GPIO32 | GPIO4 |
+| 2 | GPIO33 | GPIO16 |
+| 3 | *(GPIO25, non utilisé)* | - |
+| 4 | GPIO26 | GPIO17 |
+| 5 | GPIO27 | GPIO18 |
+| 6 | GPIO14 | GPIO19 |
+| 7 | GPIO12 | GPIO21 |
+| 8 | GPIO13 | GPIO22 |
+
+Les GPIO des reed switches ont été choisis pour n'avoir **aucune contrainte** : pas de strapping
+pin, pas d'entrée seule (34-39 évités). Ils utilisent le **pull-up interne** de l'ESP32
+(`mode: INPUT_PULLUP`), aucune résistance externe n'est nécessaire.
+
+Câblage d'un reed : une borne sur le GPIO, l'autre sur GND. Porte fermée = contact fermé =
+niveau bas = `off` (*Fermée*) dans Home Assistant. Si l'état apparaît inversé, ajouter
+`inverted: true` sous `pin:`.
 
 ## Configuration ESPHome
 
+Fichier de référence : [`esphome/smartlocker-relais.yaml`](../../esphome/smartlocker-relais.yaml).
+Les secrets (clé API, mots de passe OTA et AP de secours) sont dans `secrets.yaml`, voir
+[`esphome/secrets.yaml.example`](../../esphome/secrets.yaml.example).
+
+Structure du fichier :
+
+| Bloc | Contenu |
+|---|---|
+| `switch` (gpio) | 7 relais `relay_1`…`relay_8` (sans 3), `restore_mode: ALWAYS_OFF` |
+| `button` (template) | 7 boutons « Ouvrir casier N » : relais ON → 400 ms → OFF |
+| `binary_sensor` (gpio) | 7 capteurs « Porte casier N », `device_class: door`, anti-rebond 50 ms |
+| `wifi.use_address` | IP fixe de la carte (192.168.0.15) pour l'OTA |
+
+Exemple d'un casier (les autres sont identiques) :
+
 ```yaml
-# smartlocker-relais.yaml
-substitutions:
-  device_name: smartlocker-relais
-  friendly_name: "Smart Locker - Relais"
-
-esphome:
-  name: ${device_name}
-  friendly_name: ${friendly_name}
-
-esp32:
-  board: esp32dev
-  framework:
-    type: arduino
-
-logger:
-api:
-  encryption:
-    key: !secret api_encryption_key
-ota:
-  password: !secret ota_password
-wifi:
-  ssid: !secret wifi_ssid
-  password: !secret wifi_password
-  ap:
-    ssid: "${device_name} Fallback"
-    password: !secret fallback_password
-
-# Relais
-
 switch:
   - platform: gpio
     name: "Relais casier 1"
     id: relay_1
     pin: GPIO32
     restore_mode: ALWAYS_OFF
-
-  - platform: gpio
-    name: "Relais casier 2"
-    id: relay_2
-    pin: GPIO33
-    restore_mode: ALWAYS_OFF
-
-  - platform: gpio
-    name: "Relais casier 3"
-    id: relay_3
-    pin: GPIO25
-    restore_mode: ALWAYS_OFF
-
-  - platform: gpio
-    name: "Relais casier 4"
-    id: relay_4
-    pin: GPIO26
-    restore_mode: ALWAYS_OFF
-
-  - platform: gpio
-    name: "Relais casier 5"
-    id: relay_5
-    pin: GPIO27
-    restore_mode: ALWAYS_OFF
-
-  - platform: gpio
-    name: "Relais casier 6"
-    id: relay_6
-    pin: GPIO14
-    restore_mode: ALWAYS_OFF
-
-  - platform: gpio
-    name: "Relais casier 7"
-    id: relay_7
-    pin: GPIO12
-    restore_mode: ALWAYS_OFF
-
-  - platform: gpio
-    name: "Relais casier 8"
-    id: relay_8
-    pin: GPIO13
-    restore_mode: ALWAYS_OFF
-
-# Boutons virtuels - impulsion 400 ms
-# Utilises par Home Assistant pour declencher l'ouverture d'un casier
 
 button:
   - platform: template
@@ -130,140 +67,12 @@ button:
       - delay: 400ms
       - switch.turn_off: relay_1
 
-  - platform: template
-    name: "Ouvrir casier 2"
-    on_press:
-      - switch.turn_on: relay_2
-      - delay: 400ms
-      - switch.turn_off: relay_2
-
-  - platform: template
-    name: "Ouvrir casier 3"
-    on_press:
-      - switch.turn_on: relay_3
-      - delay: 400ms
-      - switch.turn_off: relay_3
-
-  - platform: template
-    name: "Ouvrir casier 4"
-    on_press:
-      - switch.turn_on: relay_4
-      - delay: 400ms
-      - switch.turn_off: relay_4
-
-  - platform: template
-    name: "Ouvrir casier 5"
-    on_press:
-      - switch.turn_on: relay_5
-      - delay: 400ms
-      - switch.turn_off: relay_5
-
-  - platform: template
-    name: "Ouvrir casier 6"
-    on_press:
-      - switch.turn_on: relay_6
-      - delay: 400ms
-      - switch.turn_off: relay_6
-
-  - platform: template
-    name: "Ouvrir casier 7"
-    on_press:
-      - switch.turn_on: relay_7
-      - delay: 400ms
-      - switch.turn_off: relay_7
-
-  - platform: template
-    name: "Ouvrir casier 8"
-    on_press:
-      - switch.turn_on: relay_8
-      - delay: 400ms
-      - switch.turn_off: relay_8
-
-# Reed switches
-
 binary_sensor:
   - platform: gpio
     name: "Porte casier 1"
     id: door_1
     pin:
-      number: GPIO34
-      mode: INPUT        # Pull-up externe 10kOhm requis
-    device_class: door
-    filters:
-      - delayed_on: 50ms
-      - delayed_off: 50ms
-
-  - platform: gpio
-    name: "Porte casier 2"
-    id: door_2
-    pin:
-      number: GPIO35
-      mode: INPUT        # Pull-up externe 10kOhm requis
-    device_class: door
-    filters:
-      - delayed_on: 50ms
-      - delayed_off: 50ms
-
-  - platform: gpio
-    name: "Porte casier 3"
-    id: door_3
-    pin:
-      number: GPIO36
-      mode: INPUT        # Pull-up externe 10kOhm requis
-    device_class: door
-    filters:
-      - delayed_on: 50ms
-      - delayed_off: 50ms
-
-  - platform: gpio
-    name: "Porte casier 4"
-    id: door_4
-    pin:
-      number: GPIO39
-      mode: INPUT        # Pull-up externe 10kOhm requis
-    device_class: door
-    filters:
-      - delayed_on: 50ms
-      - delayed_off: 50ms
-
-  - platform: gpio
-    name: "Porte casier 5"
-    id: door_5
-    pin:
       number: GPIO4
-      mode: INPUT_PULLUP
-    device_class: door
-    filters:
-      - delayed_on: 50ms
-      - delayed_off: 50ms
-
-  - platform: gpio
-    name: "Porte casier 6"
-    id: door_6
-    pin:
-      number: GPIO16
-      mode: INPUT_PULLUP
-    device_class: door
-    filters:
-      - delayed_on: 50ms
-      - delayed_off: 50ms
-
-  - platform: gpio
-    name: "Porte casier 7"
-    id: door_7
-    pin:
-      number: GPIO17
-      mode: INPUT_PULLUP
-    device_class: door
-    filters:
-      - delayed_on: 50ms
-      - delayed_off: 50ms
-
-  - platform: gpio
-    name: "Porte casier 8"
-    id: door_8
-    pin:
-      number: GPIO5
       mode: INPUT_PULLUP
     device_class: door
     filters:
@@ -274,7 +83,13 @@ binary_sensor:
 ## Points d'attention
 
 - **restore_mode: ALWAYS_OFF** : garantit que les relais sont ouverts au redémarrage.
-- L'ESP32 de cette carte peut avoir les niveaux de GPIO relais inversés (actif LOW) selon la version du PCB. Si les relais fonctionnent à l'envers, ajouter `inverted: true` sur les pins concernées.
+- **Ne jamais piloter le `switch` directement** depuis HA : passer par le `button`, qui borne
+  l'impulsion à 400 ms (le solénoïde grille s'il reste alimenté, voir [serrure](../hardware/serrure.md)).
+  Le composant `smart_locker` n'utilise que les boutons.
+- L'ESP32 de cette carte peut avoir les niveaux de GPIO relais inversés (actif LOW) selon la
+  version du PCB. Si les relais fonctionnent à l'envers, ajouter `inverted: true` sur les pins concernées.
+- GPIO12 (relais 7) est une strapping pin (tension flash) imposée par le PCB. Elle est à l'état
+  bas au boot tant que le relais est au repos : ne rien y ajouter.
 
 ## Flashage initial
 
@@ -301,14 +116,17 @@ Mettre un cavalier entre **GND et GPIO0** avant de brancher l'USB-UART, pour for
 
 ### Commande
 
-```bash
-esphome compile smartlocker-relais.yaml
+Avec la CLI ESPHome, compilation et flash série en une fois :
 
-esptool --chip esp32 \
-        --port /dev/ttyUSB0 \
-        --baud 460800 \
-        write_flash -z 0x0 \
-        ~/Telechargenents/smartlocker-relais.factory.bin
+```bash
+esphome run esphome/smartlocker-relais.yaml --device /dev/ttyUSB0
+```
+
+Alternative : télécharger le binaire depuis le dashboard ESPHome de HA (*Install › Manual
+download › Factory format*) puis le flasher avec esptool :
+
+```bash
+esptool --chip esp32 --port /dev/ttyUSB0 --baud 460800 write_flash -z 0x0 smartlocker-relais.factory.bin
 ```
 
 Identifier le bon port avec `ls /dev/tty*` avant et après branchement de l'adaptateur.

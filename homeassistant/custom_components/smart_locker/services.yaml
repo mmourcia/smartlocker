@@ -1,10 +1,10 @@
 assign:
   name: Assigner un casier
-  description: Assigne un casier à un utilisateur Home Assistant et le passe en état occupé.
+  description: Assigne un destinataire au casier, génère le PIN si besoin et passe le casier en état occupé.
   fields:
     locker_id:
       name: Numéro du casier
-      description: Numéro du casier (1 à 8)
+      description: Numéro du casier (1, 2, 4 à 8 — le 3 est le compartiment technique)
       required: true
       selector:
         number:
@@ -13,7 +13,7 @@ assign:
           mode: box
     user:
       name: Utilisateur
-      description: Nom de l'utilisateur Home Assistant
+      description: Destinataire au format « Prénom Nom » (tel que saisi dans la carte Destinataires)
       required: true
       selector:
         text:
@@ -24,7 +24,7 @@ unassign:
   fields:
     locker_id:
       name: Numéro du casier
-      description: Numéro du casier (1 à 8)
+      description: Numéro du casier (1, 2, 4 à 8 — le 3 est le compartiment technique)
       required: true
       selector:
         number:
@@ -44,7 +44,7 @@ open:
   fields:
     locker_id:
       name: Numéro du casier
-      description: Numéro du casier (1 à 8)
+      description: Numéro du casier (1, 2, 4 à 8 — le 3 est le compartiment technique)
       required: true
       selector:
         number:
@@ -54,11 +54,11 @@ open:
 
 notify:
   name: Notifier l'utilisateur
-  description: Envoie un email à l'utilisateur assigné pour l'informer qu'un colis l'attend.
+  description: Envoie le code PIN aux destinataires assignés via leurs services de notification (email, SMS, app mobile).
   fields:
     locker_id:
       name: Numéro du casier
-      description: Numéro du casier (1 à 8)
+      description: Numéro du casier (1, 2, 4 à 8 — le 3 est le compartiment technique)
       required: true
       selector:
         number:
@@ -72,7 +72,7 @@ reset:
   fields:
     locker_id:
       name: Numéro du casier
-      description: Numéro du casier (1 à 8)
+      description: Numéro du casier (1, 2, 4 à 8 — le 3 est le compartiment technique)
       required: true
       selector:
         number:

@@ -1,5 +1,8 @@
 # Fraisage - Logements anneaux LED dans le Kallax
 
+> **Abandonné.** Les anneaux LED ont été remplacés par deux rubans COB adressables pilotés par
+> WLED (voir [Éclairage WLED](wled-gledopto.md)). Page conservée pour référence.
+
 ## Principe
 
 Chaque casier du Kallax reçoit un anneau NeoPixel WS2812B 12 LEDs. Pour l'intégrer proprement dans

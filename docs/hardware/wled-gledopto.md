@@ -1,107 +1,124 @@
-# Contrôleur LED WLED - Gledopto 4 voies
+# Éclairage - Rubans COB et contrôleur WLED Gledopto
 
 ## Principe
 
-Le contrôleur **Gledopto GL-C-007** (ou variante compatible WLED) est un contrôleur LED 4 voies
-flashé avec le firmware [WLED](https://kno.wled.ge/). Il remplace les GPIO NeoPixel de l'ESP32 relais
-pour la gestion des anneaux LED, et s'intègre nativement dans Home Assistant via l'intégration WLED.
+Chaque case du Kallax est éclairée par une portion de **ruban COB adressable** (WS281x).
+Deux rubans parcourent le meuble, pilotés par un contrôleur **Gledopto** flashé avec
+[WLED](https://kno.wled.ge/). Le composant `smart_locker` commande WLED directement selon l'état
+des casiers (voir [code couleur](#code-couleur)).
 
-## Mapping voies → casiers
+> Les anneaux NeoPixel prévus au départ ont été abandonnés (intégration trop compliquée).
 
-Avec 4 voies pour 8 casiers, chaque voie pilote 2 anneaux en série ou en parallèle :
+## Câblage
 
-| Voie WLED | Casiers | Segment WLED |
+| Ruban | GPIO Gledopto | LED WLED | Casiers |
+|---|---|---|---|
+| Ruban 1 | GPIO16 | 0 → 25 (26 LED) | 1, 3, 5, 7 |
+| Ruban 2 | GPIO4 | 26 → 52 (27 LED) | 2, 4, 6, 8 |
+
+- Type de LED WLED : WS281x (type 22), ordre RGB, 53 LED au total.
+- Limiteur de courant WLED : 3 000 mA au total.
+- Bouton physique du Gledopto sur GPIO17, relais d'alimentation LED sur GPIO18.
+- mDNS : `wled-locker` (nom d'appareil `WLED-Gledopto`).
+
+## Segments
+
+Un segment WLED par case, nommé « Casier N ». **L'identifiant de segment vaut `N - 1`** : c'est
+la seule convention dont dépend le composant (`LED_SEGMENTS` dans `const.py`).
+
+| Segment | Nom | LED (début → fin exclue) | Ruban |
+|---|---|---|---|
+| 0 | Casier 1 | 0 → 6 | 1 |
+| 1 | Casier 2 | 26 → 32 | 2 |
+| 2 | Casier 3 | 7 → 13 | 1 |
+| 3 | Casier 4 | 33 → 39 | 2 |
+| 4 | Casier 5 | 14 → 20 | 1 |
+| 5 | Casier 6 | 40 → 46 | 2 |
+| 6 | Casier 7 | 21 → 26 | 1 |
+| 7 | Casier 8 | 47 → 53 | 2 |
+
+La case 3 est le compartiment technique : son segment existe dans WLED mais le composant le
+laisse toujours éteint.
+
+Le **preset 1 « Smart-Locker-Structure »** recrée ces segments et est chargé au démarrage du
+Gledopto (`def.ps = 1`). Ne pas le supprimer : le composant n'envoie que les identifiants de
+segment, pas leurs bornes.
+
+## Sauvegarde de la configuration
+
+Les exports WLED sont versionnés dans [`wled/`](../../wled/) :
+
+| Fichier | Contenu | Restauration |
 |---|---|---|
-| Voie 1 | Casier 1 + Casier 2 | Segment 0 (LEDs 0–23) |
-| Voie 2 | Casier 3 + Casier 4 | Segment 1 (LEDs 0–23) |
-| Voie 3 | Casier 5 + Casier 6 | Segment 2 (LEDs 0–23) |
-| Voie 4 | Casier 7 + Casier 8 | Segment 3 (LEDs 0–23) |
+| `wled/cfg.json` | Configuration matérielle (rubans, GPIO, WiFi sans mot de passe) | WLED › Config › Security & Updates › Restore configuration |
+| `wled/presets.json` | Preset de structure + presets de démonstration | WLED › Config › Security & Updates › Restore presets |
 
-> Chaque anneau WS2812B comprend 12 LEDs. 2 anneaux par voie = 24 LEDs par segment.
-> Les 2 casiers d'une même voie partagent la couleur/animation - si on veut les différencier,
-> il faut les câbler en série sur la même voie et définir des sous-segments dans WLED
-> (LEDs 0–11 = casier A, LEDs 12–23 = casier B).
+Presets disponibles :
 
-## Alimentation du contrôleur
+| Preset | Nom | Usage |
+|---|---|---|
+| 1 | Smart-Locker-Structure | Segments, chargé au boot |
+| 100-109 | DEMO - Casier N / Final / Extinction | Allumage casier par casier |
+| 110 | DEMO - SmartLocker Light Show | Playlist des presets 100-109 |
+| 120-127 | SmartLocker - Situation initiale, Accès, Porte ouverte… | Scénario réaliste, source du code couleur |
+| 128 | SmartLocker - DEMO REALISTE | Playlist des presets 120-127 |
 
-Le Gledopto GL-C-007 accepte du **5V ou 12V** selon les broches utilisées. Les WS2812B fonctionnent en 5V.
+## Code couleur
 
-```
-Option A : 5V dédié
-    Alim 5V/5A ──── Gledopto VIN/GND ──── Anneaux WS2812B
+Issu des presets 120-127 et appliqué par le composant :
 
-Option B : depuis le 12V (avec régulateur embarqué)
-    12V alim principale ──── Gledopto VIN 12V ──── (régulateur interne) ──── WS2812B
-```
-
-Avec 8 anneaux × 12 LEDs × 60 mA (blanc plein) = **5,76 A en crête à 5V**.
-Prévoir une alimentation 5V/6A dédiée ou s'assurer que le 12V/20A supporte la conversion.
-
-## Intégration WLED
-
-WLED expose une API HTTP/WebSocket et se découvre automatiquement via mDNS. Home Assistant
-l'intègre nativement sans configuration manuelle :
-
-1. WLED se connecte au WiFi (même réseau que le Raspberry Pi)
-2. Home Assistant découvre automatiquement l'appareil (`Paramètres > Appareils et services`)
-3. Les entités générées incluent :
-   - `light.wled_smartlocker` - contrôle global
-   - Segments individuels si configurés dans WLED
-
-## Configuration WLED recommandée
-
-Dans l'interface WLED (`http://<ip-wled>/`), créer 4 segments nommés :
-
-| Segment | Nom | LEDs début | LEDs fin |
+| Situation | Couleur | Effet | Casiers concernés |
 |---|---|---|---|
-| 0 | casiers_1_2 | 0 | 23 |
-| 1 | casiers_3_4 | 0 | 23 |
-| 2 | casiers_5_6 | 0 | 23 |
-| 3 | casiers_7_8 | 0 | 23 |
+| Casier libre ou colis récupéré | Vert `0,255,0` | Fixe | Le casier |
+| Colis en attente (occupé / notifié) | Bleu `0,75,255` | Fixe | Le casier |
+| Casier hors service | Rouge `255,0,0` | Fixe | Le casier |
+| Code correct | Vert `0,255,0` | Blink (8 s) | Le casier qui s'ouvre, **tous les autres éteints** |
+| Code incorrect | Rouge `255,0,0` | Blink (3 s) | Tous les casiers |
+| Porte ouverte trop longtemps | Orange `255,110,0` | Blink | Le casier, jusqu'à fermeture |
 
-> Si les voies sont câblées indépendamment (GND/DATA séparés), chaque voie = un segment distinct
-> dans WLED avec ses propres LEDs 0 à 23.
+## Quand l'éclairage s'allume
 
-## Presets WLED pour les états casier
+Les LED sont **éteintes par défaut**. Elles s'allument sur activité devant le meuble :
 
-Créer des presets dans WLED pour chaque état :
+- appui sur une touche du digicode (événement `esphome.keypad_key_pressed`) ;
+- badge RFID présenté ;
+- ouverture ou fermeture d'une porte ;
+- bouton **Tester** de la carte Éclairage.
 
-| Preset | Couleur | Animation | État casier |
-|---|---|---|---|
-| 1 | Vert `#00FF00` | Fixe | Libre |
-| 2 | Bleu `#0000FF` | Fixe | Occupé, destinataire notifié |
-| 3 | Vert `#00FF00` | Clignotant 1 Hz | Code correct, casier sur le point de s'ouvrir |
-| 4 | Éteint | - | Autres casiers pendant l'ouverture (focus sur le casier 3) |
-| 5 | Orange `#FF8C00` | Clignotant rapide 4 Hz | Porte ouverte depuis trop longtemps |
-| 6 | Rouge `#FF0000` | Clignotant 2 Hz | Code incorrect (tous les casiers, 3s) |
-| 7 | Rouge `#FF0000` | Fixe | Casier hors service |
+Elles s'éteignent après la *durée d'allumage* (30 s par défaut) sans nouvelle activité. Une alerte
+« porte ouverte trop longtemps » reste visible même hors activité (seul le casier en alerte clignote).
 
-Ces presets sont appelables depuis Home Assistant via le service `wled.preset` ou via l'API REST WLED.
+À terme, un radar mmWave remplacera ou complétera le déclencheur digicode.
 
-## Contrôle depuis Home Assistant
+## Pilotage depuis Home Assistant
 
-```yaml
-# Exemple : allumer le segment casiers_1_2 en vert (casier libre)
-service: light.turn_on
-target:
-  entity_id: light.wled_casiers_1_2
-data:
-  rgb_color: [0, 255, 0]
-  brightness: 128
+1. Le Gledopto est ajouté dans HA via l'intégration **WLED** (découverte automatique).
+2. Dans la carte Lovelace **Éclairage** (`custom:smart-locker-leds-card`), choisir ce contrôleur.
+   Voir [dashboard](../home-assistant/dashboard.md#carte-éclairage-smart-locker-leds-card).
+
+Le composant récupère l'adresse IP du contrôleur dans l'entrée de l'intégration WLED, puis envoie
+chaque changement en **une seule requête** `POST http://<ip>/json/state` contenant les 8 segments.
+Changement atomique, sans scintillement, contrairement à 8 appels `light.turn_on` successifs.
+Un état identique au précédent n'est pas renvoyé.
+
+Exemple de requête (code correct sur le casier 2) :
+
+```json
+{
+  "on": true, "bri": 190, "transition": 0,
+  "seg": [
+    {"id": 0, "on": false},
+    {"id": 1, "on": true, "bri": 255, "col": [[0,255,0],[0,0,0],[0,0,0]], "fx": 1, "sx": 170},
+    {"id": 2, "on": false}
+  ]
+}
 ```
 
-Ou via preset WLED :
-
-```yaml
-service: rest_command.wled_preset
-data:
-  ip: "192.168.1.x"
-  preset: 1
-  seg: 0
-```
+Les entités `light.*` créées par l'intégration WLED restent utilisables pour des essais, mais
+le composant réécrit l'état à la prochaine activité.
 
 ## Références
 
 - [Firmware WLED](https://kno.wled.ge/)
-- [Gledopto GL-C-007 sur WLED](https://kno.wled.ge/basics/compatible-hardware/#gledopto)
+- [API JSON WLED](https://kno.wled.ge/interfaces/json-api/)
 - [Intégration WLED dans Home Assistant](https://www.home-assistant.io/integrations/wled/)

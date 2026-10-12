@@ -3,14 +3,14 @@ import pathlib
 import voluptuous as vol
 
 from homeassistant.components.http import StaticPathConfig
-from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
+from homeassistant.const import EVENT_HOMEASSISTANT_STARTED, STATE_OFF, STATE_ON
 from homeassistant.core import Event, HomeAssistant, ServiceCall, callback
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.entity_component import EntityComponent
 from homeassistant.helpers.event import async_track_state_change_event
 from .const import (
     DOMAIN,
-    NUM_LOCKERS,
+    LOCKER_IDS,
     SERVICE_ASSIGN,
     SERVICE_UNASSIGN,
     SERVICE_OPEN,
@@ -19,21 +19,25 @@ from .const import (
     ATTR_LOCKER_ID,
     ATTR_USER,
     ESPHOME_BUTTON_OPEN,
+    ESPHOME_DOOR_SENSOR,
     DEFAULT_NOTIFICATION_TITLE,
     CONF_PIN_SENSOR,
-    DEFAULT_PIN_SENSOR,
+    EVENT_CODE_ENTERED,
+    EVENT_KEY_PRESSED,
+    EVENT_TAG_SCANNED,
     STATE_OCCUPIED,
     STATE_WAITING,
 )
 from .entity import LockerEntity
+from .leds import LedController, async_setup_leds_ws
 from .recipients import async_setup_recipients
 
 _LOGGER = logging.getLogger(__name__)
 
 CONFIG_SCHEMA = vol.Schema({
-    DOMAIN: vol.Schema({
-        vol.Optional(CONF_PIN_SENSOR, default=DEFAULT_PIN_SENSOR): cv.string,
-    })
+    DOMAIN: vol.Any(None, vol.Schema({
+        vol.Optional(CONF_PIN_SENSOR): cv.string,  # obsolete, ignore
+    }))
 }, extra=vol.ALLOW_EXTRA)
 
 _CARD_URL = "/smart_locker/smart-locker-card.js"
@@ -44,40 +48,95 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     await _async_setup_frontend(hass)
 
     component = EntityComponent(_LOGGER, DOMAIN, hass)
-    lockers = [LockerEntity(i) for i in range(1, NUM_LOCKERS + 1)]
-    await component.async_add_entities(lockers)
-    hass.data[DOMAIN] = {locker.locker_id: locker for locker in lockers}
+    lockers = {i: LockerEntity(i) for i in LOCKER_IDS}
+    await component.async_add_entities(lockers.values())
+    hass.data[DOMAIN] = {"lockers": lockers}
     await async_setup_recipients(hass)
 
-    # --- Listener digicode PIN ----------------------------------------------
+    leds = LedController(hass, lockers)
+    hass.data[DOMAIN]["leds"] = leds
+    async_setup_leds_ws(hass)
 
-    pin_sensor = config.get(DOMAIN, {}).get(CONF_PIN_SENSOR, DEFAULT_PIN_SENSOR)
+    if CONF_PIN_SENSOR in (config.get(DOMAIN) or {}):
+        _LOGGER.warning(
+            "smart_locker: l'option '%s' est obsolete et ignoree - le PIN est recu "
+            "via l'evenement %s", CONF_PIN_SENSOR, EVENT_CODE_ENTERED,
+        )
+
+    # --- Digicode -----------------------------------------------------------
+    # Evenements plutot que changement d'etat du capteur PIN : un meme code saisi
+    # deux fois de suite declenche bien deux traitements.
 
     @callback
-    def pin_entered(event):
-        new_state = event.data.get("new_state")
-        if not new_state or new_state.state in ("", "unknown", "unavailable"):
+    def code_entered(event: Event) -> None:
+        entered_pin = str(event.data.get("code", "")).strip()
+        if not entered_pin:
             return
-        entered_pin = new_state.state.strip()
-        for locker in hass.data[DOMAIN].values():
+        for locker in lockers.values():
             if locker.pin_code == entered_pin and locker.state in (STATE_OCCUPIED, STATE_WAITING):
-                _LOGGER.info("PIN %s reconnu - ouverture casier %s", entered_pin, locker.locker_id)
-                button_entity = ESPHOME_BUTTON_OPEN.format(locker.locker_id)
-                hass.async_create_task(
-                    hass.services.async_call("button", "press", {"entity_id": button_entity})
-                )
+                _LOGGER.info("PIN reconnu - ouverture casier %s", locker.locker_id)
+                hass.async_create_task(hass.services.async_call(
+                    "button", "press",
+                    {"entity_id": ESPHOME_BUTTON_OPEN.format(locker.locker_id)},
+                ))
+                leds.show_access(locker.locker_id)
                 locker.mark_retrieved()
                 return
-        _LOGGER.warning("PIN %s saisi non reconnu sur aucun casier assigne", entered_pin)
+        _LOGGER.warning("PIN saisi non reconnu sur aucun casier assigne")
+        leds.show_error()
 
-    async_track_state_change_event(hass, [pin_sensor], pin_entered)
+    @callback
+    def keypad_activity(_event: Event) -> None:
+        leds.activity()
+
+    hass.bus.async_listen(EVENT_CODE_ENTERED, code_entered)
+    hass.bus.async_listen(EVENT_KEY_PRESSED, keypad_activity)
+    hass.bus.async_listen(EVENT_TAG_SCANNED, keypad_activity)
+
+    # --- Eclairage : portes et etats des casiers ----------------------------
+
+    door_to_locker = {ESPHOME_DOOR_SENSOR.format(i): i for i in LOCKER_IDS}
+
+    @callback
+    def door_changed(event: Event) -> None:
+        new_state = event.data.get("new_state")
+        old_state = event.data.get("old_state")
+        if new_state is None or new_state.state not in (STATE_ON, STATE_OFF):
+            return
+        was_known = old_state is not None and old_state.state in (STATE_ON, STATE_OFF)
+        # Reconnexion ESPHome (unavailable -> off) : pas une activite
+        if (was_known and old_state.state == new_state.state) or (not was_known and new_state.state == STATE_OFF):
+            return
+        leds.door_changed(door_to_locker[event.data["entity_id"]], new_state.state == STATE_ON)
+
+    @callback
+    def locker_changed(_event: Event) -> None:
+        leds.render()
+
+    async_track_state_change_event(hass, list(door_to_locker), door_changed)
+    async_track_state_change_event(
+        hass, [locker.entity_id for locker in lockers.values()], locker_changed
+    )
+
+    @callback
+    def _start_leds(_event: Event | None = None) -> None:
+        for entity_id, locker_id in door_to_locker.items():
+            state = hass.states.get(entity_id)
+            if state and state.state == STATE_ON:
+                leds.door_changed(locker_id, True)
+        leds.render()
+
+    if hass.is_running:
+        _start_leds()
+    else:
+        hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, _start_leds)
 
     # --- Services -----------------------------------------------------------
 
     async def handle_assign(call: ServiceCall) -> None:
         locker_id = call.data[ATTR_LOCKER_ID]
         user = call.data[ATTR_USER]
-        locker = hass.data[DOMAIN].get(locker_id)
+        locker = lockers.get(locker_id)
         if not locker:
             _LOGGER.error("Casier %s introuvable", locker_id)
             return
@@ -86,19 +145,20 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
     async def handle_open(call: ServiceCall) -> None:
         locker_id = call.data[ATTR_LOCKER_ID]
-        locker = hass.data[DOMAIN].get(locker_id)
+        locker = lockers.get(locker_id)
         if not locker:
             _LOGGER.error("Casier %s introuvable", locker_id)
             return
         button_entity = ESPHOME_BUTTON_OPEN.format(locker_id)
         await hass.services.async_call("button", "press", {"entity_id": button_entity})
+        leds.show_access(locker_id)
         locker.mark_retrieved()
         _LOGGER.info("Casier %s ouvert - colis recupere", locker_id)
 
     async def handle_unassign(call: ServiceCall) -> None:
         locker_id = call.data[ATTR_LOCKER_ID]
         user = call.data[ATTR_USER]
-        locker = hass.data[DOMAIN].get(locker_id)
+        locker = lockers.get(locker_id)
         if not locker:
             _LOGGER.error("Casier %s introuvable", locker_id)
             return
@@ -107,7 +167,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
     async def handle_notify(call: ServiceCall) -> None:
         locker_id = call.data[ATTR_LOCKER_ID]
-        locker = hass.data[DOMAIN].get(locker_id)
+        locker = lockers.get(locker_id)
         if not locker:
             _LOGGER.error("Casier %s introuvable", locker_id)
             return
@@ -121,7 +181,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         title = hass.data[DOMAIN]["settings"].get("notification_title", DEFAULT_NOTIFICATION_TITLE)
         recipients = hass.data[DOMAIN]["recipients"]
         already_notified = locker.extra_state_attributes.get("notified_at", {})
-        notified = False
+        notified = False  # au moins un destinataire notifie
 
         for user in assigned:
             if user in already_notified:
@@ -165,6 +225,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             )
 
             _EMAIL_SVC = ("smtp", "mail", "gmail", "imap", "email")
+            user_notified = False
             for svc in services:
                 svc_is_email = any(k in svc.lower() for k in _EMAIL_SVC)
                 data: dict = {"title": title, "message": message}
@@ -193,24 +254,31 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
                         "notify.%s → %s pour casier %s",
                         svc, data["target"][0], locker_id,
                     )
-                    notified = True
+                    user_notified = True
                 except Exception as err:
                     _LOGGER.error("Erreur notify.%s pour %s : %s", svc, user, err)
-            locker.mark_user_notified(user)
+            if user_notified:
+                locker.mark_user_notified(user)
+                notified = True
+            else:
+                _LOGGER.warning(
+                    "Aucune notification envoyee a '%s' pour casier %s - il reste notifiable",
+                    user, locker_id,
+                )
 
         if notified:
             locker.notify_sent()
 
     async def handle_reset(call: ServiceCall) -> None:
         locker_id = call.data[ATTR_LOCKER_ID]
-        locker = hass.data[DOMAIN].get(locker_id)
+        locker = lockers.get(locker_id)
         if not locker:
             _LOGGER.error("Casier %s introuvable", locker_id)
             return
         locker.reset()
         _LOGGER.info("Casier %s remis a libre", locker_id)
 
-    locker_id_schema = vol.All(int, vol.Range(min=1, max=NUM_LOCKERS))
+    locker_id_schema = vol.All(vol.Coerce(int), vol.In(LOCKER_IDS))
     user_schema = vol.Schema({
         vol.Required(ATTR_LOCKER_ID): locker_id_schema,
         vol.Required(ATTR_USER): cv.string,

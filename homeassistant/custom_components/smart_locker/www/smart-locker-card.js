@@ -188,7 +188,7 @@ class SmartLockerCardEditor extends HTMLElement {
         <label style="display:flex;align-items:center;gap:10px;font-size:0.9em;">
           <span style="flex-shrink:0;">Numéro de casier</span>
           <select style="flex:1;padding:5px 8px;border-radius:6px;border:1px solid #ccc;font-size:1em;">
-            ${[1,2,3,4,5,6,7,8].map(i =>
+            ${[1,2,4,5,6,7,8].map(i =>
               `<option value="${i}" ${(this._config || {}).locker_id == i ? 'selected' : ''}>${i}</option>`
             ).join('')}
           </select>
@@ -903,5 +903,157 @@ window.customCards.push({
   type:        'smart-locker-recipients-card',
   name:        'Smart Locker — Destinataires',
   description: 'Gestion des destinataires et paramètres de notification',
+  preview:     false,
+});
+
+// ─── Carte éclairage (contrôleur WLED) ───────────────────────────────────────
+
+const LED_LEGEND = [
+  ['#00FF00', 'Libre / récupéré',               false],
+  ['#004BFF', 'Colis en attente',               false],
+  ['#00FF00', 'Code correct : casier à ouvrir', true],
+  ['#FF0000', 'Code incorrect (3 s)',           true],
+  ['#FF6E00', 'Porte ouverte trop longtemps',   true],
+  ['#FF0000', 'Hors service',                   false],
+];
+
+const LCSS = RCSS + `
+  .field { min-width: 0; }
+  .field input, .field select { width: 100%; box-sizing: border-box; }
+  .field select {
+    padding: 6px 8px;
+    border: 1px solid var(--divider-color);
+    border-radius: 6px;
+    background: var(--card-background-color);
+    color: var(--primary-text-color);
+    font-size: 0.85em;
+  }
+  .field .hint { font-size: 0.7em; color: var(--secondary-text-color); }
+  .status { font-size: 0.78em; color: var(--secondary-text-color); margin-right: auto; align-self: center; }
+  .legend { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; font-size: 0.78em; margin-top: 12px; }
+  .legend span { display: flex; align-items: center; gap: 6px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .dot.blink { animation: sl-blink 1s steps(1) infinite; }
+  @keyframes sl-blink { 50% { opacity: 0.15; } }
+`;
+
+class SmartLockerLedsCard extends HTMLElement {
+  static getStubConfig() { return {}; }
+  constructor() {
+    super();
+    this.attachShadow({ mode: 'open' });
+    this._loaded = false;
+  }
+
+  setConfig(config) { this._config = config || {}; }
+
+  set hass(hass) {
+    this._hass = hass;
+    if (!this._loaded) { this._loaded = true; this._load(); }
+  }
+
+  async _load() {
+    let devices = [], settings = {};
+    try {
+      [devices, settings] = await Promise.all([
+        this._hass.callWS({ type: 'smart_locker/leds/devices' }),
+        this._hass.callWS({ type: 'smart_locker/settings/get' }),
+      ]);
+    } catch (err) { console.error('SmartLocker leds load:', err); }
+    this._render(devices, settings);
+  }
+
+  _render(devices, s) {
+    const known = devices.some(d => d.entry_id === s.led_entry_id);
+    const options = [
+      `<option value="" ${!s.led_entry_id ? 'selected' : ''}>— Aucun (LED désactivées) —</option>`,
+      ...devices.map(d =>
+        `<option value="${this._esc(d.entry_id)}" ${d.entry_id === s.led_entry_id ? 'selected' : ''}>
+          ${this._esc(d.title)}${d.host ? ` (${this._esc(d.host)})` : ''}</option>`),
+      ...(s.led_entry_id && !known
+        ? [`<option value="${this._esc(s.led_entry_id)}" selected>⚠ Appareil introuvable</option>`] : []),
+    ].join('');
+    const num = (id, label, value, min, max, hint) => `
+      <div class="field">
+        <label>${label}</label>
+        <input id="${id}" type="number" min="${min}" max="${max}" value="${this._esc(value)}">
+        <span class="hint">${hint}</span>
+      </div>`;
+
+    this.shadowRoot.innerHTML = `
+      <style>${LCSS}</style>
+      <ha-card>
+        <div class="card-header">
+          <div class="card-title"><ha-icon icon="mdi:led-strip-variant"></ha-icon>Éclairage des casiers</div>
+          <button class="btn-add" id="btn-test" title="Allume l'éclairage comme si quelqu'un tapait sur le digicode">
+            <ha-icon icon="mdi:lightbulb-on-outline"></ha-icon>Tester
+          </button>
+        </div>
+        <div class="form">
+          <div class="form-grid">
+            <div class="field" style="grid-column: 1 / -1">
+              <label>Contrôleur WLED</label>
+              <select id="f-entry">${options}</select>
+              <span class="hint">${devices.length ? 'Appareils de l\'intégration WLED de Home Assistant'
+                : 'Aucun appareil WLED : ajouter l\'intégration WLED dans Paramètres › Appareils et services'}</span>
+            </div>
+            ${num('f-bri', 'Luminosité', s.led_brightness, 1, 255, '1 à 255')}
+            ${num('f-timeout', 'Durée d\'allumage (s)', s.led_timeout, 5, 3600, 'Après la dernière touche / porte')}
+            ${num('f-door', 'Alerte porte ouverte (s)', s.door_alert_delay, 5, 3600, 'Clignotement orange au-delà')}
+          </div>
+          <div class="form-actions">
+            <span class="status" id="status"></span>
+            <button class="r-btn r-btn-primary" id="f-save">Enregistrer</button>
+          </div>
+        </div>
+        <div class="legend">
+          ${LED_LEGEND.map(([c, l, b]) =>
+            `<span><i class="dot ${b ? 'blink' : ''}" style="background:${c}"></i>${l}</span>`).join('')}
+        </div>
+      </ha-card>
+    `;
+    const sr = this.shadowRoot;
+    sr.getElementById('f-save').onclick = () => this._save();
+    sr.getElementById('btn-test').onclick = async () => {
+      try {
+        await this._hass.callWS({ type: 'smart_locker/leds/test' });
+        this._status('Éclairage allumé');
+      } catch (err) { this._status(`Erreur : ${err.message || err}`); }
+    };
+  }
+
+  async _save() {
+    const sr = this.shadowRoot;
+    const int = id => parseInt(sr.getElementById(id).value, 10);
+    try {
+      await this._hass.callWS({
+        type: 'smart_locker/settings/set',
+        led_entry_id:     sr.getElementById('f-entry').value,
+        led_brightness:   int('f-bri'),
+        led_timeout:      int('f-timeout'),
+        door_alert_delay: int('f-door'),
+      });
+      this._status('Enregistré ✓');
+    } catch (err) { this._status(`Erreur : ${err.message || err}`); }
+  }
+
+  _status(text) {
+    const el = this.shadowRoot.getElementById('status');
+    if (el) el.textContent = text;
+  }
+
+  _esc(s) {
+    return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  getCardSize() { return 4; }
+}
+
+customElements.define('smart-locker-leds-card', SmartLockerLedsCard);
+
+window.customCards.push({
+  type:        'smart-locker-leds-card',
+  name:        'Smart Locker — Éclairage',
+  description: 'Choix du contrôleur WLED et réglages de l\'éclairage des casiers',
   preview:     false,
 });

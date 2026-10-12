@@ -6,7 +6,8 @@ Référence : [composant wiegand ESPHome](https://esphome.io/components/wiegand/
 
 Le digicode se connecte à un ESP32 dédié via deux fils data (D0 et D1). L'ESP32 décode les touches
 et les assemble en code PIN via le composant `key_collector`, puis transmet le code complet à
-Home Assistant.
+Home Assistant dès le **6e chiffre** saisi (les PIN générés par le composant `smart_locker` font
+toujours 6 chiffres).
 
 ---
 
@@ -39,64 +40,26 @@ sans problème sur GPIO14 et GPIO27 — aucun diviseur de tension n'est nécessa
 
 ## Configuration ESPHome
 
-Le composant `wiegand` capture chaque touche via `on_key`. Le composant `key_collector` les
-assemble en séquence et déclenche l'envoi à Home Assistant quand l'utilisateur appuie sur `#`.
-La touche `*` efface la saisie en cours.
+Fichier de référence : [`esphome/smartlocker-digicode.yaml`](../../esphome/smartlocker-digicode.yaml)
+(secrets : voir [`esphome/secrets.yaml.example`](../../esphome/secrets.yaml.example)).
+
+Le composant `wiegand` reçoit les touches et les badges. Le `key_collector` s'y branche via
+`source_id` (pas besoin de `on_key`) :
 
 ```yaml
-# smartlocker-digicode.yaml
-substitutions:
-  device_name: smartlocker-digicode
-  friendly_name: "Smart Locker - Digicode"
-
-esphome:
-  name: ${device_name}
-  friendly_name: ${friendly_name}
-
-esp32:
-  board: esp32dev
-  framework:
-    type: arduino
-
-logger:
-  level: INFO
-  # Ne pas logger les codes PIN en production
-
-api:
-  encryption:
-    key: !secret api_encryption_key
-ota:
-  password: !secret ota_password
-wifi:
-  ssid: !secret wifi_ssid
-  password: !secret wifi_password
-
-# Wiegand - gere les touches clavier et les badges RFID
-
-wiegand:
-  - id: keypad
-    d0: GPIO14
-    d1: GPIO27
-    on_tag:
-      # Badge RFID -> ID transmis directement a Home Assistant (x est deja un std::string)
-      - text_sensor.template.publish:
-          id: tag_id
-          state: !lambda 'return x;'
-      - homeassistant.event:
-          event: esphome.tag_scanned
-          data:
-            tag_id: !lambda 'return x;'
-
-# key_collector se branche sur le wiegand via source_id - pas besoin de on_key
-
 key_collector:
   - id: pin_collector
     source_id: keypad
-    min_length: 4
-    max_length: 8
-    end_keys: "#"
+    min_length: 6
+    max_length: 6
+    end_key_required: false
+    # end_keys: "#"   # a remettre si la validation apres 6 chiffres pose probleme
     back_keys: "*"
     timeout: 10s
+    # Chaque touche reveille l'eclairage des casiers (composant smart_locker)
+    on_progress:
+      - homeassistant.event:
+          event: esphome.keypad_key_pressed
     on_result:
       - text_sensor.template.publish:
           id: pin_code
@@ -109,40 +72,47 @@ key_collector:
       - text_sensor.template.publish:
           id: pin_code
           state: ""
-
-# Capteurs exposes dans Home Assistant
-
-text_sensor:
-  - platform: template
-    name: "Code PIN digicode"
-    id: pin_code
-    icon: "mdi:dialpad"
-  - platform: template
-    name: "Badge RFID"
-    id: tag_id
-    icon: "mdi:card-account-details"
 ```
+
+| Paramètre | Valeur | Effet |
+|---|---|---|
+| `min_length` / `max_length` | 6 / 6 | Le code est envoyé automatiquement au 6e chiffre |
+| `end_key_required` | `false` | Pas besoin de valider avec `#` |
+| `back_keys` | `*` | Efface le dernier chiffre saisi |
+| `timeout` | 10 s | Saisie partielle abandonnée après 10 s d'inactivité, capteur remis à vide |
+| `on_progress` | événement | `esphome.keypad_key_pressed` à chaque touche : allume l'éclairage |
+
+Le badge RFID passe par `on_tag` du composant `wiegand` : publication dans le capteur
+« Badge RFID » et événement `esphome.tag_scanned` (reçu côté HA comme `tag_scanned`, voir plus bas).
 
 ### Touches speciales
 
 | Valeur Wiegand | Touche physique | Role dans key_collector |
 |---|---|---|
 | 0-9 | Chiffres | Saisie du code |
-| 10 | `*` | Efface la saisie en cours |
-| 11 | `#` | Valide et envoie le code |
+| 10 | `*` | Efface le dernier chiffre |
+| 11 | `#` | Ignorée (sauf si `end_keys: "#"` est réactivé) |
 
 ---
 
 ## Cote Home Assistant
 
-Deux evenements sont fires selon le mode d'authentification :
+Trois evenements sont emis :
 
 | Evenement | Champ data | Declencheur |
 |---|---|---|
-| `esphome.keypad_code_entered` | `code` | Utilisateur valide son PIN avec `#` |
-| `esphome.tag_scanned` | `tag_id` | Badge RFID presente devant le lecteur |
+| `esphome.keypad_key_pressed` | - | Chaque touche pressee |
+| `esphome.keypad_code_entered` | `code` | 6e chiffre du PIN saisi |
+| `tag_scanned` | `tag_id`, `device_id` | Badge RFID presente devant le lecteur |
 
-Exemple d'automatisation :
+> Home Assistant intercepte `esphome.tag_scanned` et le transforme en **scan de tag natif** : le
+> badge apparaît dans *Paramètres › Tags* et l'événement émis sur le bus est `tag_scanned`, pas
+> `esphome.tag_scanned`. Les automatisations doivent donc écouter `tag_scanned` (ou utiliser le
+> déclencheur *Tag*).
+
+Le composant `smart_locker` écoute directement ces événements : **aucune automatisation n'est
+nécessaire** pour ouvrir un casier au bon PIN ni pour allumer l'éclairage. Les événements restent
+disponibles pour d'autres usages, par exemple :
 
 ```yaml
 alias: "Digicode - code PIN ou badge RFID"
@@ -151,7 +121,7 @@ trigger:
     event_type: esphome.keypad_code_entered
     id: pin
   - platform: event
-    event_type: esphome.tag_scanned
+    event_type: tag_scanned
     id: badge
 action:
   - variables:
@@ -165,7 +135,7 @@ action:
 ```
 
 > Relever l'ID d'un badge en le presentant devant le lecteur et en consultant
-> les logs ESPHome ou l'etat de l'entite `text_sensor.badge_rfid` dans HA.
+> les logs ESPHome ou l'etat de l'entite `sensor.smart_locker_digicode_badge_rfid` dans HA.
 
 ---
 
@@ -177,5 +147,12 @@ action:
   only, pas de pull-up interne). GPIO14 et GPIO27 sont des choix surs.
 - L'ID de badge est transmis sous forme de chaine dans `x`. Pour l'afficher en hexadecimal :
   `return str_sprintf("%llX", atoll(x.c_str()));`
-- Les `text_sensor` publient les donnees en clair dans Home Assistant. Prevoir de les effacer
-  apres traitement (publier une chaine vide).
+- Les `text_sensor` publient les donnees en clair dans Home Assistant. Le `on_timeout` ne remet
+  le capteur a vide que sur une saisie **abandonnee** : apres un code complet, le capteur conserve
+  le dernier PIN saisi.
+- Le logger est actuellement en `VERBOSE` (mise au point) : les codes PIN apparaissent dans les
+  logs ESPHome. Repasser en `INFO` en production.
+- Le composant `smart_locker` ecoute l'evenement et non le capteur : un meme PIN saisi deux fois
+  de suite est bien traite deux fois.
+- Les evenements `esphome.*` emis par un appareil ESPHome ne necessitent pas l'option *Autoriser
+  l'appareil a effectuer des actions Home Assistant*.
