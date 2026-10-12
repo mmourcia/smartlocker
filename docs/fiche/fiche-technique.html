@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Fiche technique Smart Locker</title>
+<style>
+  @page { size: A4; margin: 10mm 11mm; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Noto Sans", "DejaVu Sans", Arial, sans-serif;
+    font-size: 8.4pt;
+    line-height: 1.32;
+    color: #111;
+    background: #fff;
+  }
+  .page { page-break-after: always; }
+  .page:last-child { page-break-after: auto; }
+
+  header { display: flex; align-items: flex-end; justify-content: space-between;
+           border-bottom: 1.5pt solid #111; padding-bottom: 2mm; margin-bottom: 3mm; }
+  h1 { font-size: 15pt; margin: 0; letter-spacing: -0.2pt; }
+  header .sub { font-size: 8pt; color: #444; margin-top: 0.8mm; }
+  header .side { text-align: right; font-size: 7.5pt; color: #444; }
+  h2 { font-size: 9.6pt; margin: 3.2mm 0 1.4mm; padding-bottom: 0.6mm; border-bottom: 0.6pt solid #999; }
+  h2 .n { display: inline-block; width: 4.6mm; height: 4.6mm; line-height: 4.6mm; text-align: center;
+          border-radius: 50%; background: #111; color: #fff; font-size: 7.5pt; margin-right: 1.4mm; }
+
+  table { width: 100%; border-collapse: collapse; }
+  th, td { border: 0.5pt solid #888; padding: 0.7mm 1.3mm; text-align: left; vertical-align: top; }
+  th { background: #eee; font-weight: 600; font-size: 7.6pt; }
+  td.c, th.c { text-align: center; }
+  tr.off td { color: #777; background: repeating-linear-gradient(135deg, #fff 0 2mm, #f2f2f2 2mm 4mm); }
+  code, .mono { font-family: "Noto Sans Mono", "DejaVu Sans Mono", monospace; font-size: 7.6pt; }
+  .fill { display: inline-block; min-width: 26mm; border-bottom: 0.5pt solid #555; }
+
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; }
+  .cols3 { display: grid; grid-template-columns: 1.15fr 1fr; gap: 4mm; }
+  .box { border: 0.6pt solid #888; border-radius: 1.5mm; padding: 1.6mm 2mm; }
+  .warn { border: 1pt solid #111; border-radius: 1.5mm; padding: 1.6mm 2mm; background: #f4f4f4; }
+  .warn b:first-child { text-transform: uppercase; letter-spacing: 0.3pt; }
+  ul { margin: 0.6mm 0; padding-left: 4mm; }
+  li { margin: 0.3mm 0; }
+  p { margin: 0.8mm 0; }
+  .muted { color: #555; }
+  .small { font-size: 7.2pt; }
+
+  /* Connecteur droit de la carte relais */
+  .conn { display: grid; grid-template-columns: 22mm 11mm 11mm 22mm 12mm; gap: 0.9mm 1.2mm;
+          align-items: center; font-size: 7.4pt; }
+  .conn .pin { border: 0.6pt solid #777; border-radius: 1mm; text-align: center; padding: 0.4mm 0; }
+  .conn .pin.reed { border: 1.2pt solid #111; font-weight: 700; }
+  .conn .pin.gnd { background: #ddd; font-weight: 700; }
+  .conn .lbl { border-radius: 1mm; text-align: center; padding: 0.4mm 0; font-weight: 600; }
+  .conn .lbl.reed { border: 1pt solid #111; }
+  .conn .lbl.gnd { background: #ddd; }
+  .conn .row { font-size: 6.6pt; color: #666; }
+  .conn .hdr { font-size: 6.6pt; color: #555; text-align: center; }
+
+  /* Schéma d'alimentation */
+  .power { font-family: "Noto Sans Mono", "DejaVu Sans Mono", monospace; font-size: 7pt; line-height: 1.28;
+           white-space: pre; margin: 0; padding: 1.5mm 2mm; border: 0.6pt solid #888; border-radius: 1.5mm; }
+
+  /* Code couleur LED */
+  .sw { display: inline-block; width: 3.4mm; height: 3.4mm; border-radius: 50%; vertical-align: -0.6mm;
+        border: 0.5pt solid #333; margin-right: 1mm; }
+  .blink { background-image: repeating-linear-gradient(90deg, transparent 0 0.7mm, #fff 0.7mm 1.2mm) !important; }
+  td.k { white-space: nowrap; font-weight: 600; }
+
+  .qr { display: flex; gap: 3mm; align-items: center; }
+  .qr img { width: 22mm; height: 22mm; }
+  ol.steps { margin: 0.6mm 0; padding-left: 5mm; }
+  ol.steps li { margin: 0.8mm 0; }
+  footer { margin-top: 2.5mm; font-size: 7pt; color: #555; display: flex; justify-content: space-between; }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════ RECTO : CÂBLAGE ═══════════════════════════ -->
+<section class="page">
+  <header>
+    <div>
+      <h1>Smart Locker · Fiche technique</h1>
+      <div class="sub">Recto : câblage · Verso : dépannage. À laisser dans le compartiment technique (case 3).</div>
+    </div>
+    <div class="side">Composant smart_locker v0.5.0<br>Mise à jour : 12/10/2026</div>
+  </header>
+
+  <h2><span class="n">1</span>Correspondance par casier</h2>
+  <table>
+    <tr><th class="c">Casier</th><th>Relais (serrure)</th><th>Reed (porte)</th><th>Broche reed, connecteur droit</th>
+        <th class="c">Segment WLED</th><th>Ruban LED</th><th>Repère fil</th></tr>
+    <tr><td class="c"><b>1</b></td><td>GPIO32</td><td>GPIO4</td><td>rangée 7, côté module</td><td class="c">0</td><td>1 (GPIO16)</td><td></td></tr>
+    <tr><td class="c"><b>2</b></td><td>GPIO33</td><td>GPIO16</td><td>rangée 6, côté bord</td><td class="c">1</td><td>2 (GPIO4)</td><td></td></tr>
+    <tr class="off"><td class="c"><b>3</b></td><td>GPIO25 non câblé</td><td>aucun</td><td>compartiment technique</td><td class="c">2 (éteint)</td><td>1</td><td></td></tr>
+    <tr><td class="c"><b>4</b></td><td>GPIO26</td><td>GPIO17</td><td>rangée 6, côté module</td><td class="c">3</td><td>2 (GPIO4)</td><td></td></tr>
+    <tr><td class="c"><b>5</b></td><td>GPIO27</td><td>GPIO18</td><td>rangée 5, côté module</td><td class="c">4</td><td>1 (GPIO16)</td><td></td></tr>
+    <tr><td class="c"><b>6</b></td><td>GPIO14</td><td>GPIO19</td><td>rangée 4, côté bord</td><td class="c">5</td><td>2 (GPIO4)</td><td></td></tr>
+    <tr><td class="c"><b>7</b></td><td>GPIO12</td><td>GPIO21</td><td>rangée 3, côté bord</td><td class="c">6</td><td>1 (GPIO16)</td><td></td></tr>
+    <tr><td class="c"><b>8</b></td><td>GPIO13</td><td>GPIO22</td><td>rangée 2, côté module</td><td class="c">7</td><td>2 (GPIO4)</td><td></td></tr>
+  </table>
+  <p class="small muted">Segment WLED = casier − 1. Ruban 1 : LED 0 à 25 · ruban 2 : LED 26 à 52. Le preset WLED 1
+    « Smart-Locker-Structure », chargé au démarrage, recrée les segments : ne pas le supprimer.</p>
+
+  <div class="cols3">
+    <div>
+      <h2><span class="n">2</span>Reed switches · connecteur droit de la carte relais</h2>
+      <div class="conn">
+        <div></div><div class="hdr">côté module</div><div class="hdr">côté bord</div><div></div><div></div>
+        <div class="lbl gnd">GND commun</div><div class="pin gnd">GND</div><div class="pin">G23</div><div></div><div class="row">rangée 1</div>
+        <div class="lbl reed">Casier 8</div><div class="pin reed">G22</div><div class="pin">TXD</div><div></div><div class="row">rangée 2</div>
+        <div></div><div class="pin">RXD</div><div class="pin reed">G21</div><div class="lbl reed">Casier 7</div><div class="row">rangée 3</div>
+        <div class="lbl gnd">GND commun</div><div class="pin gnd">GND</div><div class="pin reed">G19</div><div class="lbl reed">Casier 6</div><div class="row">rangée 4</div>
+        <div class="lbl reed">Casier 5</div><div class="pin reed">G18</div><div class="pin">G5</div><div></div><div class="row">rangée 5</div>
+        <div class="lbl reed">Casier 4</div><div class="pin reed">G17</div><div class="pin reed">G16</div><div class="lbl reed">Casier 2</div><div class="row">rangée 6</div>
+        <div class="lbl reed">Casier 1</div><div class="pin reed">G4</div><div class="pin">G0</div><div></div><div class="row">rangée 7</div>
+        <div></div><div class="pin">G2</div><div class="pin">G15</div><div></div><div class="row">rangée 8</div>
+        <div></div><div class="pin">SD1</div><div class="pin">SD0</div><div></div><div class="row">rangée 9</div>
+        <div></div><div class="pin">CLK</div><div class="pin">3V3</div><div></div><div class="row">rangée 10</div>
+      </div>
+      <p class="small">Carte vue antenne en haut. Chaque reed : un fil sur son GPIO, un fil vers le GND commun.
+        Pas de polarité, pas de résistance (pull-up interne). Les 7 retours sont regroupés sur un Wago, puis
+        un seul fil rejoint un GND.</p>
+    </div>
+    <div>
+      <h2><span class="n">3</span>Serrure (×7)</h2>
+      <table>
+        <tr><th>Fil</th><th>De</th><th>Vers</th></tr>
+        <tr><td>+12V</td><td>bornier 12V</td><td>COM du relais</td></tr>
+        <tr><td>+ serrure</td><td>NO du relais</td><td>solénoïde +</td></tr>
+        <tr><td>− serrure</td><td>solénoïde −</td><td>GND bornier</td></tr>
+      </table>
+      <p class="small">NC non utilisé. Impulsion de 400 ms : le ressort pousse la porte.</p>
+
+      <h2><span class="n">4</span>Digicode et LED</h2>
+      <table>
+        <tr><th>Digicode</th><th>Vers</th></tr>
+        <tr><td>VCC clavier</td><td>12V</td></tr>
+        <tr><td>D0 / D1</td><td>ESP32 GPIO14 / GPIO27</td></tr>
+        <tr><td>ESP32 5V (VIN)</td><td>convertisseur 12V → 5V</td></tr>
+        <tr><td>GND</td><td>commun clavier, ESP32, convertisseur</td></tr>
+      </table>
+      <table style="margin-top:1.4mm">
+        <tr><th>Gledopto (WLED)</th><th>Vers</th></tr>
+        <tr><td>Alimentation</td><td>12V</td></tr>
+        <tr><td>GPIO16 / GPIO4</td><td>DATA ruban 1 / ruban 2</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <h2><span class="n">5</span>Alimentation 12V</h2>
+  <div class="cols">
+<pre class="power">230V ─┬─ Mean Well XDR-240-12 (12V 20A)
+      │     bornes V+/V- (câble 2×0,5 mm²)
+      │
+      ├─ carte relais LC-Relay (12V)
+      ├─ COM des 7 relais ── NO ── serrures
+      ├─ Gledopto WLED ── rubans LED
+      ├─ clavier digicode (12V)
+      └─ convertisseur 12V → 5V ── ESP32 digicode
+
+Relais au repos (contact ouvert) :
++12V ── COM ─╱ ─ NO ── solénoïde ── GND
+→ du 12V sur COM n'atteint PAS la serrure.</pre>
+    <div>
+      <h2 style="margin-top:0"><span class="n">6</span>Ouverture de secours</h2>
+      <p>Une serrure à la fois, <b>impulsion de 1 à 2 s</b> (jamais plus de 5 s).</p>
+      <table>
+        <tr><th>Panne</th><th>Faire</th></tr>
+        <tr><td>HA ou ESP32 HS,<br>12V OK</td><td>Fil volant <b>COM ↔ NO</b> du relais du casier, 1 s.</td></tr>
+        <tr><td>Alimentation 12V HS</td><td>Batterie 12V : <b>+ sur NO</b> du relais (ou + du solénoïde),
+          <b>− sur GND</b> du bornier, 1 à 2 s.</td></tr>
+      </table>
+      <div class="warn" style="margin-top:1.6mm"><b>Jamais sur le COM</b> : relais au repos, rien ne passe.
+        <b>Fusible 5 A</b> sur le + de la batterie (risque de court-circuit).</div>
+    </div>
+  </div>
+
+  <footer><span>Positions de broches : vérifier la sérigraphie de la carte avant de souder.</span><span>1/2</span></footer>
+</section>
+
+<!-- ═══════════════════════════ VERSO : DÉPANNAGE ═══════════════════════════ -->
+<section class="page">
+  <header>
+    <div>
+      <h1>Smart Locker · Dépannage</h1>
+      <div class="sub">Tout ce qu'il faut savoir avant d'ouvrir la documentation.</div>
+    </div>
+    <div class="side">Dashboard HA : cartes Casier, Destinataires,<br>Messages et Éclairage</div>
+  </header>
+
+  <h2><span class="n">7</span>Ce que disent les LED</h2>
+  <table>
+    <tr><th>Couleur</th><th>Signification</th></tr>
+    <tr><td class="k"><span class="sw" style="background:#00ff00"></span>Vert fixe</td><td>Casier libre</td></tr>
+    <tr><td class="k"><span class="sw" style="background:#004bff"></span>Bleu fixe</td><td>Colis en attente</td></tr>
+    <tr><td class="k"><span class="sw blink" style="background:#00ff00"></span>Vert clignotant</td><td>Bon code ou badge : ce(s) casier(s) s'ouvre(nt), les autres sont éteints (8 s)</td></tr>
+    <tr><td class="k"><span class="sw blink" style="background:#ff0000"></span>Rouge clignotant</td><td>Tous les casiers, 3 s : code faux, saisie abandonnée (10 s sans touche), badge inconnu ou sans colis. On peut recommencer.</td></tr>
+    <tr><td class="k"><span class="sw blink" style="background:#ff6e00"></span>Orange clignotant</td><td>Porte ouverte depuis plus de 60 s, jusqu'à sa fermeture (visible même éclairage éteint)</td></tr>
+    <tr><td class="k"><span class="sw" style="background:#ff0000"></span>Rouge fixe</td><td>Casier hors service</td></tr>
+  </table>
+  <p class="small muted">Les LED sont éteintes au repos. Elles s'allument à la première touche, au passage d'un badge
+    ou à l'ouverture d'une porte, puis s'éteignent après 30 s sans activité. Ce n'est pas une panne.</p>
+
+  <h2><span class="n">8</span>Flash initial de la carte relais (sans USB natif)</h2>
+  <div class="cols" style="grid-template-columns: 1.25fr 1fr">
+    <ol class="steps">
+      <li>Couper le 12V de la carte relais.</li>
+      <li>Câbler l'adaptateur USB-UART : <b>TX → RX</b>, <b>RX → TX</b>, <b>GND → GND</b>, <b>5V → VCC</b>
+        (le 5V de l'adaptateur suffit pendant le flash).</li>
+      <li><b>Poser le cavalier entre G0 et GND</b> <u>avant</u> de brancher l'USB : l'ESP32 démarre alors en
+        mode flash.</li>
+      <li>Brancher l'USB, repérer le port (<code>ls /dev/ttyUSB*</code>), puis lancer :<br>
+        <code>esphome run esphome/smartlocker-relais.yaml --device /dev/ttyUSB0</code></li>
+      <li><b>Retirer le cavalier</b>, débrancher l'USB, remettre le 12V.</li>
+    </ol>
+    <div>
+      <div class="warn"><b>Cavalier G0 ↔ GND</b><br>
+        Sans lui, le flash échoue (« Failed to connect »). S'il reste en place, la carte ne démarre pas
+        normalement.</div>
+      <p class="small" style="margin-top:1.4mm">G0 est sur le connecteur droit, rangée 7, côté bord (voir
+        recto). Les mises à jour suivantes se font sans fil, en OTA depuis ESPHome dans HA.</p>
+    </div>
+  </div>
+
+  <div class="cols" style="margin-top:1mm">
+    <div>
+      <h2><span class="n">9</span>Gestes utiles</h2>
+      <ul>
+        <li><b>Tester un reed</b> : relier le GPIO au GND avec un fil, l'entité doit passer à « fermé ».</li>
+        <li><b>Mesurer un reed</b> : porte fermée = GPIO à 0 V, ouverte = 3,3 V.</li>
+        <li><b>Porte toujours « ouverte »</b> : fil coupé, GND commun débranché ou aimant trop loin
+          (plus de 2 mm). <b>Toujours « fermée »</b> : court-circuit vers GND ou reed collé.</li>
+        <li><b>Digicode muet</b> (rien dans les logs ESPHome) : remettre le clavier en Wiegand 26 avec
+          <code>* 123456 # 0 31 #</code>.</li>
+        <li><b>Tester l'éclairage</b> : bouton <b>Tester</b> de la carte Éclairage.</li>
+        <li><b>Redémarrer HA</b> : sans risque, casiers, codes et assignations sont conservés.</li>
+        <li><b>Ouvrir sans HA</b> : ouverture de secours, au recto.</li>
+      </ul>
+    </div>
+    <div>
+      <h2><span class="n">10</span>À ne jamais faire</h2>
+      <div class="warn">
+        <ul>
+          <li><b>Alimenter une serrure plus de 5 s</b> : le solénoïde grille. Toujours passer par les boutons
+            « Ouvrir casier N », jamais par les interrupteurs « Relais casier N ».</li>
+          <li><b>Câbler sous tension</b> : couper le 230V avant de toucher au bornier.</li>
+          <li><b>Utiliser GPIO 0, 2, 5, 12, 15</b> (démarrage) ou <b>34 à 39</b> (entrée seule, sans pull-up)
+            pour un nouveau reed.</li>
+          <li><b>Supprimer le preset WLED 1</b> (structure des segments).</li>
+        </ul>
+      </div>
+      <div class="qr" style="margin-top:2mm">
+        <img src="qr-depot.svg" alt="QR code du dépôt">
+        <div class="small"><b>Documentation complète</b><br>
+          <span class="mono">github.com/mmourcia/smartlocker</span><br>
+          câblage détaillé, YAML ESPHome, config WLED, composant Home Assistant.</div>
+      </div>
+    </div>
+  </div>
+
+  <footer><span>Smart Locker · fiche générée depuis le dépôt (docs/fiche/)</span><span>2/2</span></footer>
+</section>
+
+</body>
+</html>

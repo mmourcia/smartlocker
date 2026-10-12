@@ -30,6 +30,7 @@ Les fichiers YAML sont dans [`esphome/`](../esphome/).
 - [Backend](backend/README.md) - Où vit la logique métier (custom component) et pistes d'évolution
 
 ### Projet
+- [Fiche technique à imprimer](fiche/fiche-technique.pdf) - Câblage et dépannage sur une feuille recto-verso, à laisser dans le compartiment technique ([source HTML](fiche/fiche-technique.html))
 - [Budget](budget.md) - Liste des composants et coûts
 
 ---
