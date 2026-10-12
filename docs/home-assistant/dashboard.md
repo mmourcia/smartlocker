@@ -116,28 +116,30 @@ cards:
   # Choix du contrôleur WLED et réglages de l'éclairage
   - type: custom:smart-locker-leds-card
 
-  # Grille des 7 casiers (la case 3 est le compartiment technique)
-  - type: grid
-    columns: 2
-    square: false
-    cards:
-      - type: custom:smart-locker-card
-        locker_id: 1
-      - type: custom:smart-locker-card
-        locker_id: 2
-      - type: custom:smart-locker-card
-        locker_id: 4
-      - type: custom:smart-locker-card
-        locker_id: 5
-      - type: custom:smart-locker-card
-        locker_id: 6
-      - type: custom:smart-locker-card
-        locker_id: 7
-      - type: custom:smart-locker-card
-        locker_id: 8
 ```
 
-Les quatre types de cartes peuvent aussi être placés sur des vues séparées
+Et, sur la vue principale, la vue d'ensemble des casiers :
+
+```yaml
+type: custom:smart-locker-lockers-card
+# Options (valeurs par défaut) :
+# title: Casiers        # titre affiché (vide pour le masquer)
+# cases: 8              # nombre de cases du meuble
+# columns: 2            # colonnes du meuble
+# technical: [3]        # cases techniques (affichées grisées, sans action)
+```
+
+La grille reproduit le meuble : Kallax 4x2 debout, **impairs à gauche (1, 3, 5, 7), pairs à
+droite (2, 4, 6, 8)**, la case 3 gardant sa place en gris « Technique ». Une seule carte suffit
+pour tous les casiers, sur téléphone comme sur grand écran.
+
+> **Ancienne carte par casier** : `custom:smart-locker-card` (avec `locker_id`) reste disponible,
+> par exemple pour afficher un seul casier. Elle est moins adaptée au téléphone que la vue d'ensemble.
+> Si votre tableau de bord contient encore une carte `locker_id: 3`, la supprimer : le casier 3 est le
+> compartiment technique. L'entité orpheline `smart_locker.casier_3` peut aussi être supprimée
+> (**Paramètres › Entités**).
+
+Les cinq types de cartes peuvent aussi être placés sur des vues séparées
 — elles proviennent du même fichier JS, aucune ressource supplémentaire à déclarer.
 
 ---
@@ -146,8 +148,9 @@ Les quatre types de cartes peuvent aussi être placés sur des vues séparées
 
 ### Carte Destinataires (`smart-locker-recipients-card`)
 
-- **Tableau** : liste des destinataires avec prénom, nom, téléphone, email, services de notification
-  et badge. Défile horizontalement sur téléphone.
+- **Liste** : une fiche par destinataire, triée par nom (prénom et nom, téléphone et email, services
+  de notification, badge). Un destinataire sans service de notification est signalé « Aucune
+  notification ». Lisible sur téléphone sans défilement horizontal.
 - **Boutons** : carte d'identité (enrôler un badge), crayon (modifier), corbeille (supprimer),
   × à côté d'un badge (le retirer), **Ajouter** (formulaire inline).
 - **Formulaire** : 4 champs texte + liste des services `notify.*` disponibles dans HA (cases à cocher).
@@ -197,7 +200,26 @@ Syntaxe : templates Jinja Home Assistant, par exemple
 Prérequis : le Gledopto doit être ajouté dans HA (**Paramètres › Appareils et services › WLED**),
 avec ses segments configurés (voir [Éclairage WLED](../hardware/wled-gledopto.md#segments)).
 
-### Carte Casier (`smart-locker-card`)
+### Carte Casiers (`smart-locker-lockers-card`)
+
+Vue d'ensemble disposée comme le meuble : une tuile par case, avec le numéro, l'état (couleur), la porte (orange si
+ouverte) et le destinataire (🔔 s'il a été notifié). L'en-tête résume la situation, par exemple :
+*2 colis · 3 libres · 1 à notifier*.
+
+Un toucher sur une tuile ouvre son **détail** sous la grille (un nouveau toucher le referme) :
+
+| État | Mis en avant | Disponible aussi |
+|---|---|---|
+| Libre | Choisir le destinataire + **Assigner** | Ouvrir (dépôt), Hors service |
+| À notifier | Code PIN, destinataires, **Notifier** | Ajouter un destinataire, Ouvrir, Libérer, Hors service |
+| Colis en attente | Code PIN, destinataires avec l'heure de notification | Ajouter un destinataire, Ouvrir, Libérer, Hors service |
+| Récupéré | Heure de récupération (libération auto à la fermeture) | Ouvrir, Libérer, Hors service |
+| Hors service | **Remettre en service** | Ouvrir, Libérer |
+
+Ouvrir, Libérer et Hors service demandent confirmation. Une erreur (par exemple un destinataire
+supprimé) s'affiche en bas du détail.
+
+### Carte Casier (`smart-locker-card`, ancienne)
 
 | Élément | Description |
 |---|---|
@@ -218,8 +240,8 @@ avec ses segments configurés (voir [Éclairage WLED](../hardware/wled-gledopto.
 | État | Couleur | Déclencheur |
 |---|---|---|
 | Libre | Vert | Initial ou après **Libérer** |
-| Occupé | Bleu | Après assignation d'un destinataire |
-| En attente | Orange | Après envoi de la notification |
+| Occupé (*À notifier* dans la vue d'ensemble) | Bleu | Après assignation d'un destinataire |
+| En attente | Bleu | Après envoi de la notification (orange dans l'ancienne carte) |
 | Récupéré | Cyan | Porte ouverte après un bon PIN ou badge, jusqu'à sa refermeture |
 | Hors service | Rouge | Bouton 🔧 de la carte (serrure en panne, maintenance) |
 
