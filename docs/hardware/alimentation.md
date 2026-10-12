@@ -29,33 +29,21 @@ Le transformateur dispose directement de plusieurs paires de bornes V+/V- en sor
 
 L'ESP32 du digicode n'accepte pas le 12V : il est alimenté en 5V par un convertisseur abaisseur 12V → 5V (15A, très largement surdimensionné pour un ESP32 mais peu coûteux), branché sur les bornes 12V de la Mean Well.
 
-## Bouton d'urgence
+## Ouverture de secours
 
-Le bouton doit connecter le +12V sur toutes les serrures simultanément, sans passer par les relais ni l'ESP32. Il fonctionne même en cas de panne logicielle. À placer dans un endroit à accès restreint.
+Il n'y a pas de bouton d'urgence câblé. En cas de panne, les serrures s'ouvrent à la main, **une à
+une, par une impulsion de 1 à 2 s** (jamais plus de 5 s : le solénoïde grille).
 
-### Problème de câblage direct
+Au repos, le contact COM–NO du relais est ouvert : du 12V appliqué sur le **COM** n'atteint pas la
+serrure. Il faut toujours alimenter le côté **NO** (ou le + du solénoïde).
 
-Relier simplement toutes les bornes NO des relais ensemble crée un problème : quand Home Assistant active un relais pour ouvrir un seul casier, le +12V se propage via les NO connectés et ouvre toutes les serrures.
+| Panne | Procédure |
+|---|---|
+| Home Assistant ou ESP32 en panne, alimentation 12V OK | Un fil volant entre le **COM** et le **NO** du relais du casier, pendant 1 s : il remplace le relais |
+| Alimentation 12V en panne | Batterie 12V : **+ sur le NO** du relais du casier (ou le + du solénoïde), **− sur le GND** du bornier, pendant 1 à 2 s |
 
-### Solution : une diode 1N4007 par relais
-
-Une diode sur chaque borne NO empêche la propagation du +12V entre relais tout en laissant passer le courant du bouton d'urgence dans le bon sens.
-
-| NO relais | Diode 1N4007 | Vers bouton |
-|---|---|---|
-| NO relais 1 | Anode sur NO, cathode vers bouton | +12V serrures |
-| NO relais 2 | Anode sur NO, cathode vers bouton | +12V serrures |
-| ... | ... | ... |
-| NO relais 8 | Anode sur NO, cathode vers bouton | +12V serrures |
-
-```
-+12V alim ──── Bouton urgence (NO) ──┬── cathode diode 1 ── anode ── NO relais 1
-                                     ├── cathode diode 2 ── anode ── NO relais 2
-                                     ├── ...
-                                     └── cathode diode 8 ── anode ── NO relais 8
-```
-
-- Bouton appuyé : le +12V passe à travers toutes les diodes et ouvre toutes les serrures
-- Relais activé par HA : le +12V est bloqué par les diodes des autres relais, seule la serrure concernée s'ouvre
-
-La bande blanche de la 1N4007 (cathode) est côté bouton/serrures. Le côté non marqué (anode) est sur le NO du relais.
+- Mettre un **fusible (5 A)** sur le fil + de la batterie, au plus près d'elle : une batterie au
+  plomb peut débiter des centaines d'ampères en court-circuit.
+- Si la Mean Well est toujours branchée, relier le − de la batterie au même GND qu'elle.
+- Selon le modèle, la serrure peut aussi avoir une libération mécanique de secours (câble ou
+  tirette) : à vérifier sur la serrure installée.

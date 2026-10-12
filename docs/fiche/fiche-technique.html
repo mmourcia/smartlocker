@@ -157,22 +157,20 @@
       ├─ clavier digicode (12V)
       └─ convertisseur 12V → 5V ── ESP32 digicode
 
-Bouton d'urgence (ouvre TOUT, sans HA) :
-+12V ── bouton ─┬─|◄─ NO relais 1
-                ├─|◄─ NO relais 2
-                └─|◄─ … NO relais 8</pre>
+Relais au repos (contact ouvert) :
++12V ── COM ─╱ ─ NO ── solénoïde ── GND
+→ du 12V sur COM n'atteint PAS la serrure.</pre>
     <div>
-      <div class="warn"><b>Diodes 1N4004</b> : la bande (cathode) est
-        <b>côté bouton</b>, l'autre côté sur le NO du relais. Sans elles, ouvrir un casier les ouvre tous.</div>
-      <h2 style="margin-top:2.4mm"><span class="n">6</span>Réseau</h2>
+      <h2 style="margin-top:0"><span class="n">6</span>Ouverture de secours</h2>
+      <p>Une serrure à la fois, <b>impulsion de 1 à 2 s</b> (jamais plus de 5 s).</p>
       <table>
-        <tr><th>Appareil</th><th>Adresse</th></tr>
-        <tr><td>Carte relais (ESPHome)</td><td class="mono">192.168.0.15</td></tr>
-        <tr><td>Digicode (ESPHome)</td><td class="mono">192.168.0.38</td></tr>
-        <tr><td>Gledopto (WLED)</td><td class="mono">wled-locker.local · <span class="fill"></span></td></tr>
-        <tr><td>Home Assistant (mini PC)</td><td class="mono"><span class="fill"></span></td></tr>
-        <tr><td>Wi-Fi</td><td class="mono">gdt24</td></tr>
+        <tr><th>Panne</th><th>Faire</th></tr>
+        <tr><td>HA ou ESP32 HS,<br>12V OK</td><td>Fil volant <b>COM ↔ NO</b> du relais du casier, 1 s.</td></tr>
+        <tr><td>Alimentation 12V HS</td><td>Batterie 12V : <b>+ sur NO</b> du relais (ou + du solénoïde),
+          <b>− sur GND</b> du bornier, 1 à 2 s.</td></tr>
       </table>
+      <div class="warn" style="margin-top:1.6mm"><b>Jamais sur le COM</b> : relais au repos, rien ne passe.
+        <b>Fusible 5 A</b> sur le + de la batterie (risque de court-circuit).</div>
     </div>
   </div>
 
@@ -238,7 +236,7 @@ Bouton d'urgence (ouvre TOUT, sans HA) :
       <ul>
         <li><b>Tester un reed</b> : relier le GPIO au GND avec un fil, l'entité doit passer à « fermé ».</li>
         <li><b>Mesurer un reed</b> : porte fermée = GPIO à 0 V, ouverte = 3,3 V.</li>
-        <li><b>Tout ouvrir sans HA</b> : bouton d'urgence (12V direct sur toutes les serrures).</li>
+        <li><b>Ouvrir sans HA</b> : voir l'ouverture de secours au recto (fil COM ↔ NO ou batterie sur NO).</li>
         <li><b>Redémarrer HA</b> : sans risque, casiers, codes et assignations sont conservés.</li>
         <li><b>Mise à jour</b> des ESP32 : OTA depuis ESPHome dans HA.</li>
         <li><b>Flash initial carte relais</b> : USB-UART (TX→RX, RX→TX, GND, 5V), cavalier GPIO0–GND,
