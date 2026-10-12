@@ -1,22 +1,65 @@
 import random
+from collections.abc import Callable
 from datetime import datetime
+
 from homeassistant.helpers.entity import Entity
-from .const import DOMAIN, STATE_FREE, STATE_OCCUPIED, STATE_WAITING, STATE_RETRIEVED
+
+from .const import DOMAIN, STATE_FREE, STATE_OCCUPIED, STATE_WAITING, STATE_RETRIEVED, LOCKER_STATES
+
+DELETED_RECIPIENT = "Destinataire supprimé"
 
 
 class LockerEntity(Entity):
+    """Casier. Les destinataires sont references par leur id (stable si renommes).
 
-    def __init__(self, locker_id: int) -> None:
+    Chaque changement est persiste (cf. lockers_store.py) : un redemarrage de Home Assistant
+    ne perd ni les PIN ni les assignations.
+    """
+
+    _attr_should_poll = False
+
+    def __init__(self, locker_id: int, data: dict | None = None,
+                 on_change: Callable[[], None] | None = None) -> None:
+        data = data or {}
         self._locker_id = locker_id
-        self._state = STATE_FREE
-        self._assigned_users: list[str] = []
-        self._pin_code: str | None = None
-        self._retrieved_at: str | None = None
-        self._notified_at: dict[str, str] = {}
+        self._state = data.get("state", STATE_FREE)
+        if self._state not in LOCKER_STATES:
+            self._state = STATE_FREE
+        self._assigned: list[str] = list(data.get("assigned", []))
+        self._pin_code: str | None = data.get("pin_code")
+        self._retrieved_at: str | None = data.get("retrieved_at")
+        self._notified_at: dict[str, str] = dict(data.get("notified_at", {}))
+        self._on_change = on_change
+
+    # ── Persistance ─────────────────────────────────────────────────────────
+
+    def as_dict(self) -> dict:
+        return {
+            "state":        self._state,
+            "assigned":     list(self._assigned),
+            "pin_code":     self._pin_code,
+            "retrieved_at": self._retrieved_at,
+            "notified_at":  dict(self._notified_at),
+        }
+
+    def _changed(self) -> None:
+        self.async_write_ha_state()
+        if self._on_change:
+            self._on_change()
+
+    # ── Proprietes ──────────────────────────────────────────────────────────
 
     @property
     def locker_id(self) -> int:
         return self._locker_id
+
+    @property
+    def assigned_ids(self) -> list[str]:
+        return list(self._assigned)
+
+    @property
+    def notified_ids(self) -> set[str]:
+        return set(self._notified_at)
 
     @property
     def pin_code(self) -> str | None:
@@ -45,52 +88,71 @@ class LockerEntity(Entity):
         }
         return icons.get(self._state, "mdi:help")
 
+    def _recipient_name(self, recipient_id: str) -> str:
+        recipients = self.hass.data.get(DOMAIN, {}).get("recipients", []) if self.hass else []
+        r = next((r for r in recipients if r["id"] == recipient_id), None)
+        return f"{r['first_name']} {r['last_name']}" if r else DELETED_RECIPIENT
+
     @property
     def extra_state_attributes(self) -> dict:
+        assigned = [
+            {"id": rid, "name": self._recipient_name(rid), "notified_at": self._notified_at.get(rid)}
+            for rid in self._assigned
+        ]
         attrs = {
-            "locker_id":      self._locker_id,
-            "assigned_users": list(self._assigned_users),
+            "locker_id":           self._locker_id,
+            "assigned_recipients": assigned,
+            # Noms affiches (compatibilite automatisations existantes)
+            "assigned_users":      [a["name"] for a in assigned],
         }
         if self._pin_code:
             attrs["pin_code"] = self._pin_code
         if self._retrieved_at:
             attrs["retrieved_at"] = self._retrieved_at
         if self._notified_at:
-            attrs["notified_at"] = dict(self._notified_at)
+            attrs["notified_at"] = {a["name"]: a["notified_at"] for a in assigned if a["notified_at"]}
         return attrs
 
-    def assign(self, user: str) -> None:
-        if user not in self._assigned_users:
-            self._assigned_users.append(user)
+    # ── Transitions ─────────────────────────────────────────────────────────
+
+    def assign(self, recipient_id: str) -> None:
+        if recipient_id not in self._assigned:
+            self._assigned.append(recipient_id)
         if not self._pin_code:
             self._pin_code = f"{random.randint(0, 999999):06d}"
         self._state = STATE_OCCUPIED
-        self.async_write_ha_state()
+        self._changed()
 
-    def unassign(self, user: str) -> None:
-        self._assigned_users = [u for u in self._assigned_users if u != user]
-        self._notified_at.pop(user, None)
-        if not self._assigned_users:
+    def unassign(self, recipient_id: str) -> None:
+        self._assigned = [r for r in self._assigned if r != recipient_id]
+        self._notified_at.pop(recipient_id, None)
+        if not self._assigned:
             self._state = STATE_FREE
-        self.async_write_ha_state()
+            self._pin_code = None
+        self._changed()
 
-    def mark_user_notified(self, user: str) -> None:
-        self._notified_at[user] = datetime.now().strftime("%d/%m %H:%M")
-        self.async_write_ha_state()
+    def mark_user_notified(self, recipient_id: str) -> None:
+        self._notified_at[recipient_id] = datetime.now().strftime("%d/%m %H:%M")
+        self._changed()
 
     def notify_sent(self) -> None:
         self._state = STATE_WAITING
-        self.async_write_ha_state()
+        self._changed()
 
     def mark_retrieved(self) -> None:
         self._state = STATE_RETRIEVED
         self._retrieved_at = datetime.now().strftime("%d/%m/%Y %H:%M")
-        self.async_write_ha_state()
+        self._changed()
 
     def reset(self) -> None:
         self._state = STATE_FREE
-        self._assigned_users = []
+        self._assigned = []
         self._pin_code = None
         self._retrieved_at = None
         self._notified_at = {}
-        self.async_write_ha_state()
+        self._changed()
+
+    def refresh(self) -> None:
+        """Destinataire renomme ou supprime : republie les noms affiches."""
+        if self.hass:
+            self.async_write_ha_state()

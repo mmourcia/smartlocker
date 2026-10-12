@@ -8,22 +8,22 @@ Alimentation choisie : **Mean Well XDR-240-12** - 12V / 20A / 240W, format rail 
 
 | Source | Consommateur |
 |---|---|
-| Mean Well XDR-240-12 (12V / 20A) | Carte ESP32, serrures x8, rubans LED x8 |
+| Mean Well XDR-240-12 (12V / 20A) | Cartes ESP32, serrures x7, éclairage LED, digicode |
 
 ## Pourquoi 20A ?
 
 | Consommateur | Courant estimé |
 |---|---|
-| Solénoïdes x8 (inrush simultané max) | 8 x 1 A = 8 A |
+| Solénoïdes x7 (inrush simultané max) | 7 x 1 A = 7 A |
 | Carte LC-Relay-ESP32-8R-D5 | ~0,5 A |
-| Rubans COB x8 (pleine luminosité) | ~3,5 A |
-| **Total crête théorique** | **~12 A** |
+| Rubans COB adressables x2, 53 pixels (limité à 3 A par WLED) | ≤ 3 A |
+| **Total crête théorique** | **~11 A** |
 
 En pratique les solénoïdes fonctionnent en impulsionnel (400 ms) et ne sont jamais tous actifs simultanément. Les LED ne sont jamais toutes à pleine luminosité. Le XDR-240-12 à 20A offre une marge confortable.
 
 ## Distribution 12V
 
-Le transformateur dispose directement de plusieurs paires de bornes V+/V- en sortie. Chaque consommateur (serrures, anneaux LED, carte ESP32) est raccordé directement sur ces bornes avec du câble 2x0,5 mm².
+Le transformateur dispose directement de plusieurs paires de bornes V+/V- en sortie. Chaque consommateur (serrures, contrôleur LED, cartes ESP32) est raccordé directement sur ces bornes avec du câble 2x0,5 mm².
 
 ## Bouton d'urgence
 

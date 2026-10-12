@@ -12,4 +12,4 @@ Page de collecte rapide. Le contenu structuré est dans les pages dédiées.
 ## Procédures en bref
 
 - Flashage initial carte relais → voir [esphome/carte-relais.md](esphome/carte-relais.md#flashage-initial)
-- Fraisage logements anneaux LED → voir [hardware/fraisage.md](hardware/fraisage.md)
+- Fraisage logements anneaux LED (abandonné) → voir [hardware/fraisage.md](hardware/fraisage.md)

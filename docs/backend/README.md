@@ -1,69 +1,32 @@
-# Backend Python - Logique métier
+# Backend - Logique métier
 
-> **Statut : à venir.** Cette section sera complétée quand le backend sera développé.
+> **Statut : réalisé sous forme de custom component Home Assistant.** Le backend Python séparé
+> (FastAPI + SQLite) envisagé au départ n'a pas été retenu.
 
-## Motivation
+## Où vit la logique
 
-Les automatisations Home Assistant YAML atteignent leurs limites pour :
-- La vérification des codes PIN (logique conditionnelle complexe sur N casiers × M utilisateurs)
-- La gestion des états métier avec transitions validées
-- L'historisation des événements (qui a ouvert quoi, quand)
-- Une future API REST pour piloter le système depuis une app mobile
+Toute la logique métier est dans [`homeassistant/custom_components/smart_locker/`](../../homeassistant/custom_components/smart_locker/) :
 
-## Architecture envisagée
+| Fichier | Rôle |
+|---|---|
+| `const.py` | Constantes : casiers gérés (`LOCKER_IDS`, case 3 exclue), états, noms d'entités ESPHome |
+| `entity.py` | `LockerEntity` : état métier, destinataires assignés (par id), PIN, horodatages, persistance |
+| `__init__.py` | Setup, écoute du digicode, services `assign` / `unassign` / `notify` / `open` / `reset`, envoi des notifications |
+| `recipients.py` | Stockage persistant des destinataires et paramètres, API WebSocket pour les cartes |
+| `badges.py` | Attribution et enrôlement des badges |
+| `messages.py` | Templates des notifications |
+| `leds.py` | Pilotage de l'éclairage WLED |
+| `www/smart-locker-card.js` | Cartes Lovelace `smart-locker-card` et `smart-locker-recipients-card` |
 
-```
-Home Assistant
-    │  webhooks / MQTT / WS
-    ▼
-Backend Python (FastAPI ou Flask)
-    ├── Gestion des casiers (états, attribution, historique)
-    ├── Gestion des utilisateurs (PIN hashé, préférences)
-    ├── Vérification PIN (bcrypt)
-    └── Notifications (email, push)
-    │
-    ▼
-SQLite (ou PostgreSQL si volumétrie)
-```
+Documentation fonctionnelle : [intégrations](../home-assistant/integrations.md) et [dashboard](../home-assistant/dashboard.md).
 
-## Interactions avec Home Assistant
+## Pourquoi un custom component plutôt qu'un backend séparé
 
-Le backend peut interagir avec HA de plusieurs façons :
+- Accès direct aux entités ESPHome (boutons, reed switches, digicode) sans token ni API REST.
+- Notifications via les services `notify.*` déjà configurés dans HA.
+- Pas de service supplémentaire à déployer ni à superviser.
 
-| Mécanisme | Sens | Usage |
-|---|---|---|
-| Webhook HA | HA → Backend | Transmettre le code saisi par le digicode |
-| REST API HA | Backend → HA | Déclencher ouverture (`button.press`), changer LED |
-| MQTT | Bidirectionnel | Bus événements temps réel |
-| Long-lived token HA | Auth | Token d'accès pour l'API HA |
+## Limites actuelles
 
-## Structure de projet envisagée
-
-```
-backend/
-├── app/
-│   ├── main.py          # Point d'entrée FastAPI
-│   ├── models.py        # Modèles SQLAlchemy (Casier, Utilisateur, Événement)
-│   ├── api/
-│   │   ├── lockers.py   # Endpoints casiers
-│   │   └── users.py     # Endpoints utilisateurs
-│   ├── services/
-│   │   ├── pin.py       # Vérification PIN, hash bcrypt
-│   │   ├── ha_client.py # Client API Home Assistant
-│   │   └── notify.py    # Notifications email/push
-│   └── config.py        # Variables d'environnement
-├── tests/
-├── requirements.txt
-└── .env.example
-```
-
-## Sécurité
-
-- Les PIN seront stockés hashés avec **bcrypt** (pas en clair comme dans les helpers HA V1)
-- Le backend tourne en local sur le Raspberry Pi, pas exposé sur internet
-- Authentification par token entre HA et le backend
-
-## Déploiement sur le Raspberry Pi
-
-Le backend tournera probablement comme un **add-on Home Assistant** ou un service systemd,
-en parallèle de Home Assistant OS.
+- Les PIN sont stockés en clair dans les attributs des entités (visibles dans HA).
+- Pas d'historique dédié en dehors de l'historique HA des entités `smart_locker.casier_N`.

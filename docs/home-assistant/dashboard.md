@@ -2,12 +2,14 @@
 
 ## Installation
 
-Copier le dossier `custom_components/smart_locker/` dans `config/custom_components/` de Home Assistant, puis redémarrer HA.
+Copier le dossier [`homeassistant/custom_components/smart_locker/`](../../homeassistant/custom_components/smart_locker/) dans `config/custom_components/` de Home Assistant, puis redémarrer HA.
 
 Le composant enregistre automatiquement au démarrage :
-- les entités des 8 casiers (`smart_locker.casier_N`)
+- les entités des 7 casiers utiles (`smart_locker.casier_N`, N = 1, 2, 4…8 — la case 3 est le compartiment technique)
 - le fichier JS des cartes Lovelace (`/smart_locker/smart-locker-card.js`)
-- la ressource Lovelace (plus besoin de l'ajouter manuellement)
+- la ressource Lovelace `/smart_locker/smart-locker-card.js?v=<version>` (plus besoin de l'ajouter
+  manuellement). Une ressource existante est mise à jour à chaque nouvelle version, ce qui force
+  les navigateurs à recharger les cartes.
 
 > **Fallback** : si l'auto-enregistrement Lovelace échoue (mode YAML strict),
 > ajouter manuellement : **Paramètres › Tableaux de bord › Ressources** →
@@ -87,15 +89,14 @@ notify:
 
 ```yaml
 smart_locker:
-  # Optionnel — capteur digicode ESPHome (valeur par défaut ci-dessous)
-  pin_sensor: sensor.smart_locker_digicode_code_pin_digicode
 ```
 
-La clé `pin_sensor` n'est à renseigner que si le nom d'entité ESPHome diffère de la valeur par défaut.
+Aucune option. L'ancienne clé `pin_sensor` est obsolète et peut être retirée (le PIN est reçu par
+événement ESPHome).
 
-> Les destinataires (prénom, nom, téléphone, email, services de notification) et l'objet des
-> notifications se gèrent entièrement depuis la carte **Destinataires** — aucune autre
-> modification de `configuration.yaml` requise.
+> Les destinataires et leurs badges, les messages et le contrôleur LED se gèrent entièrement
+> depuis les cartes **Destinataires**, **Messages** et **Éclairage** — aucune autre modification de
+> `configuration.yaml` requise.
 
 ---
 
@@ -109,7 +110,13 @@ cards:
   # Carte de gestion des destinataires et paramètres de notification
   - type: custom:smart-locker-recipients-card
 
-  # Grille des 8 casiers
+  # Templates des messages (titre, SMS, email)
+  - type: custom:smart-locker-messages-card
+
+  # Choix du contrôleur WLED et réglages de l'éclairage
+  - type: custom:smart-locker-leds-card
+
+  # Grille des 7 casiers (la case 3 est le compartiment technique)
   - type: grid
     columns: 2
     square: false
@@ -118,8 +125,6 @@ cards:
         locker_id: 1
       - type: custom:smart-locker-card
         locker_id: 2
-      - type: custom:smart-locker-card
-        locker_id: 3
       - type: custom:smart-locker-card
         locker_id: 4
       - type: custom:smart-locker-card
@@ -132,7 +137,7 @@ cards:
         locker_id: 8
 ```
 
-Les deux types de cartes peuvent aussi être placées sur des vues séparées
+Les quatre types de cartes peuvent aussi être placés sur des vues séparées
 — elles proviennent du même fichier JS, aucune ressource supplémentaire à déclarer.
 
 ---
@@ -141,13 +146,56 @@ Les deux types de cartes peuvent aussi être placées sur des vues séparées
 
 ### Carte Destinataires (`smart-locker-recipients-card`)
 
-- **Objet des notifications** : champ éditable en haut de la carte (crayon). Valeur par défaut :
-  *"Colis mis à disposition à la pharmacie"*. Persisté entre les redémarrages.
-- **Tableau** : liste des destinataires avec prénom, nom, téléphone, email et services de notification.
-- **Boutons** : crayon (modifier), corbeille (supprimer), **Ajouter** (formulaire inline).
+- **Tableau** : liste des destinataires avec prénom, nom, téléphone, email, services de notification
+  et badge. Défile horizontalement sur téléphone.
+- **Boutons** : carte d'identité (enrôler un badge), crayon (modifier), corbeille (supprimer),
+  × à côté d'un badge (le retirer), **Ajouter** (formulaire inline).
 - **Formulaire** : 4 champs texte + liste des services `notify.*` disponibles dans HA (cases à cocher).
   Sélectionner un ou plusieurs services par destinataire. Un destinataire peut recevoir à la fois
   un email et un SMS si les deux services sont cochés.
+
+#### Badges
+
+L'administrateur, devant le meuble :
+
+1. clique sur l'icône **carte d'identité** du destinataire → bandeau *« Passez le badge de … devant
+   le lecteur (30 s) »* ;
+2. passe le badge devant le digicode → *« Badge … attribué à … »*, la colonne Badge est mise à jour.
+
+Pendant l'enrôlement, le badge lu **n'ouvre aucun casier**. Si le badge appartient déjà à un autre
+destinataire, le bandeau propose **Réattribuer** (le badge est retiré à l'ancien propriétaire) ou
+**Annuler**. Sans badge lu en 30 s, l'enrôlement est annulé. Un destinataire a au plus un badge.
+
+### Carte Messages (`smart-locker-messages-card`)
+
+| Élément | Description |
+|---|---|
+| **Titre** | Objet de l'email, titre de la notification push |
+| **Texte** | SMS, notification push, version texte de l'email |
+| **Email HTML** | Corps HTML de l'email |
+| Variables | Clic = insertion dans le dernier champ sélectionné (`{{ first_name }}`, `{{ pin_formatted }}`…) |
+| **Aperçu** | Rend les trois templates avec un destinataire d'exemple (nombre de caractères du SMS, email affiché comme reçu) |
+| **Valeurs par défaut** | Recharge les templates d'origine (à enregistrer ensuite) |
+| **Enregistrer** | Valide puis sauvegarde ; un template invalide est refusé avec le message d'erreur |
+
+Syntaxe : templates Jinja Home Assistant, par exemple
+`{% if has_badge %}ou présentez votre badge{% endif %}`. Liste des variables :
+[intégrations](integrations.md#messages).
+
+### Carte Éclairage (`smart-locker-leds-card`)
+
+| Élément | Description |
+|---|---|
+| **Contrôleur WLED** | Liste des appareils de l'intégration WLED de HA. *Aucun* = LED désactivées |
+| **Luminosité** | Luminosité globale (1-255) |
+| **Durée d'allumage** | Secondes d'éclairage après la dernière touche / porte |
+| **Alerte porte ouverte** | Secondes avant le clignotement orange d'une porte restée ouverte |
+| **Enregistrer** | Sauvegarde et applique immédiatement |
+| **Tester** | Allume l'éclairage comme si quelqu'un tapait sur le digicode |
+| Légende | Rappel du code couleur |
+
+Prérequis : le Gledopto doit être ajouté dans HA (**Paramètres › Appareils et services › WLED**),
+avec ses segments configurés (voir [Éclairage WLED](../hardware/wled-gledopto.md#segments)).
 
 ### Carte Casier (`smart-locker-card`)
 
@@ -157,11 +205,11 @@ Les deux types de cartes peuvent aussi être placées sur des vues séparées
 | Badge état | Libre / Occupé / En attente / Récupéré / Hors service |
 | Badge porte | Ouverte / Fermée (état physique reed switch) |
 | Code PIN | Affiché si état Occupé ou En attente (ex : `620-181`) |
-| Date récupération | Horodatage affiché si état Récupéré |
+| Date récupération | Horodatage affiché si état Récupéré (porte ouverte, avant refermeture) |
 | Badges utilisateurs | Un badge par destinataire assigné, avec bouton × pour retirer. Affiche l'icône 🔔 et l'heure si une notification a été envoyée. |
-| **Ouvrir** | Déclenche l'impulsion relais ESPHome |
+| **Ouvrir** | Impulsion relais pour déposer ou vérifier. **Ne change pas l'état** du casier |
 | **Notifier** | Envoie la notification avec le code PIN. Un destinataire déjà notifié est ignoré (réinitialisé à la libération du casier). |
-| **Libérer** | Remet le casier à l'état Libre, efface PIN et assignations |
+| **Libérer** | Remet le casier à l'état Libre, efface PIN et assignations (automatique après récupération) |
 | Dropdown + ✚ | Assigner un destinataire (liste issue de la carte Destinataires) |
 
 ### États métier
@@ -171,7 +219,7 @@ Les deux types de cartes peuvent aussi être placées sur des vues séparées
 | Libre | Vert | Initial ou après **Libérer** |
 | Occupé | Bleu | Après assignation d'un destinataire |
 | En attente | Orange | Après envoi de la notification |
-| Récupéré | Cyan | Après ouverture (bouton ou digicode) |
+| Récupéré | Cyan | Porte ouverte après un bon PIN ou badge, jusqu'à sa refermeture |
 | Hors service | Rouge | Manuel |
 
 ### Flux de traitement d'un colis
@@ -179,5 +227,9 @@ Les deux types de cartes peuvent aussi être placées sur des vues séparées
 1. Déposer le colis dans le casier
 2. Assigner le destinataire via le dropdown → le casier passe en **Occupé**, un PIN à 6 chiffres est généré
 3. Cliquer **Notifier** → email/SMS envoyé avec le PIN, casier passe en **En attente**, badge 🔔 horodaté affiché
-4. Le destinataire saisit son PIN sur le digicode → casier s'ouvre automatiquement, passe en **Récupéré**
-5. Cliquer **Libérer** pour remettre le casier à disposition
+4. Le destinataire tape ses 6 chiffres sur le digicode (pas de `#`), ou présente son badge → serrure(s) actionnée(s)
+5. La porte s'ouvre → **Récupéré** ; il la referme → casier **libéré automatiquement**
+
+Si la porte ne s'ouvre pas dans les 30 s (serrure bloquée, destinataire parti), le colis reste en
+attente et le PIN reste valide. **Libérer** reste disponible pour un cas particulier (colis repris
+par le gestionnaire, erreur d'assignation).

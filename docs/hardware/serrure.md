@@ -23,7 +23,7 @@ La serrure est également équipée d'un **axe métallique sur ressort** qui pou
 
 ## Pilotage via relais
 
-Chaque serrure est commandée par un relais de la carte LC-Relay-ESP32-8R-D5.
+Chaque serrure est commandée par un relais de la carte LC-Relay-ESP32-8R-D5 (7 serrures : la case 3 est le compartiment technique, le relais 3 reste libre).
 
 Le relais se comporte comme un interrupteur commandé par l'ESP32. Au repos, ses contacts sont ouverts et la serrure ne reçoit pas de courant. Quand l'ESP32 active le relais, les contacts se ferment et le +12V alimente le solénoïde pendant la durée de l'impulsion.
 
@@ -75,4 +75,5 @@ ESPHome expose cet état comme un `binary_sensor` de classe `door`.
 
 - Fixer la partie magnétique sur le battant de la porte, la partie contact sur le châssis fixe.
 - Aligner soigneusement : le déclenchement doit être fiable jusqu'à 2 mm de jeu.
-- Les GPIO 34, 35, 36 et 39 de l'ESP32 n'ont pas de pull-up interne - ajouter une résistance 10 kOhm externe vers le 3,3V pour ces entrées.
+- Les reed switches sont câblés sur des GPIO avec pull-up interne (voir [brochage](../esphome/carte-relais.md#brochage-utilisé)) : aucune résistance externe.
+- La case 3 (compartiment technique) n'a ni serrure ni reed switch.

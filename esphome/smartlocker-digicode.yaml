@@ -1,0 +1,95 @@
+# smartlocker-digicode.yaml
+substitutions:
+  device_name: smartlocker-digicode
+  friendly_name: "Smart Locker - Digicode"
+
+esphome:
+  name: ${device_name}
+  friendly_name: ${friendly_name}
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+
+api:
+  encryption:
+    key: !secret smartlocker_digicode_api_key
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  use_address: 192.168.0.38
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+logger:
+  level: VERBOSE
+
+# Wiegand - gere les touches clavier et les badges RFID
+
+wiegand:
+  - id: keypad
+    d0: GPIO14
+    d1: GPIO27
+    on_tag:
+      # Badge RFID -> ID transmis directement a Home Assistant (x est deja un std::string)
+      # Evenement dedie (et non esphome.tag_scanned, que HA convertit en tag generique
+      # declenchable par n'importe quel lecteur NFC) : seul ce lecteur ouvre les casiers.
+      - text_sensor.template.publish:
+          id: tag_id
+          state: !lambda 'return x;'
+      - homeassistant.event:
+          event: esphome.badge_scanned
+          data:
+            tag_id: !lambda 'return x;'
+
+# key_collector se branche sur le wiegand via source_id - pas besoin de on_key
+key_collector:
+  - id: pin_collector
+    source_id: keypad
+    min_length: 6
+    max_length: 6
+    end_key_required: false
+    # end_keys: "#" # A remettre si la validation après 6 chiffres ne fonctionne pas correctement
+    back_keys: "*"
+    timeout: 10s
+
+    # Chaque touche reveille l'eclairage des casiers (composant smart_locker)
+    on_progress:
+      - homeassistant.event:
+          event: esphome.keypad_key_pressed
+
+    on_result:
+      - text_sensor.template.publish:
+          id: pin_code
+          state: !lambda 'return x;'
+      - homeassistant.event:
+          event: esphome.keypad_code_entered
+          data:
+            code: !lambda 'return x;'
+
+    # Saisie commencee puis abandonnee : signalee comme un mauvais code (clignotement
+    # rouge) pour indiquer a l'utilisateur qu'il peut recommencer.
+    on_timeout:
+      - text_sensor.template.publish:
+          id: pin_code
+          state: ""
+      - homeassistant.event:
+          event: esphome.keypad_timeout
+
+
+# Capteurs exposes dans Home Assistant
+
+text_sensor:
+  - platform: template
+    name: "Code PIN digicode"
+    id: pin_code
+    icon: "mdi:dialpad"
+  - platform: template
+    name: "Badge RFID"
+    id: tag_id
+    icon: "mdi:card-account-details"
