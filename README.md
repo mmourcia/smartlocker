@@ -70,22 +70,6 @@ Tout ce qu'il faut pour construire et configurer le système :
 
 ---
 
-## Roadmap
-
-| Statut | Sujet |
-|---|---|
-| ✅ | Ouverture des serrures et lecture des portes (ESPHome) |
-| ✅ | Digicode : PIN 6 chiffres, ouverture automatique du bon casier |
-| ✅ | Gestion des destinataires et notifications email / SMS / app mobile |
-| ✅ | Éclairage WLED selon l'état des casiers, allumé sur activité digicode |
-| ✅ | Retour visuel code correct / incorrect, alerte porte restée ouverte |
-| ✅ | Badges RFID : enrôlement depuis le lecteur, ouverture de tous les colis du destinataire |
-| ✅ | Messages (titre, SMS, email) personnalisables par templates |
-| ✅ | Casiers conservés après un redémarrage de HA ou une coupure de courant |
-| ✅ | Récupération confirmée par l'ouverture de la porte, libération automatique à la fermeture |
-
----
-
 ## Tests
 
 Tests du custom component dans un Home Assistant de test (WLED simulé) :
