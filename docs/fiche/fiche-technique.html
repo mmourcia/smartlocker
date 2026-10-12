@@ -69,6 +69,8 @@
 
   .qr { display: flex; gap: 3mm; align-items: center; }
   .qr img { width: 22mm; height: 22mm; }
+  ol.steps { margin: 0.6mm 0; padding-left: 5mm; }
+  ol.steps li { margin: 0.8mm 0; }
   footer { margin-top: 2.5mm; font-size: 7pt; color: #555; display: flex; justify-content: space-between; }
 </style>
 </head>
@@ -200,35 +202,26 @@ Relais au repos (contact ouvert) :
   <p class="small muted">Les LED sont éteintes au repos. Elles s'allument à la première touche, au passage d'un badge
     ou à l'ouverture d'une porte, puis s'éteignent après 30 s sans activité. Ce n'est pas une panne.</p>
 
-  <h2><span class="n">8</span>Symptôme → que vérifier</h2>
-  <table>
-    <tr><th style="width:30%">Symptôme</th><th>Causes probables, dans l'ordre</th></tr>
-    <tr><td><b>Rien ne se passe</b> quand on tape un code (aucune LED)</td>
-        <td>ESP32 du digicode éteint (convertisseur 5V, fil VIN) · digicode hors ligne dans HA (Wi-Fi) ·
-            Home Assistant arrêté · aucun contrôleur WLED choisi dans la carte <b>Éclairage</b>.</td></tr>
-    <tr><td>LED muettes mais le reste marche</td>
-        <td>Gledopto éteint ou hors Wi-Fi · bouton <b>Tester</b> de la carte Éclairage · luminosité à 1 ·
-            segments perdus (recharger le preset 1).</td></tr>
-    <tr><td><b>Rouge</b> alors que le code est bon</td>
-        <td>Le casier n'est pas « occupé » ni « en attente » (déjà libéré ?) · code mal tapé : 6 chiffres
-            exactement, pas de <code>#</code>, <code>*</code> efface le dernier chiffre.</td></tr>
-    <tr><td>Vert clignotant mais <b>la porte ne s'ouvre pas</b></td>
-        <td>Relais qui claque ? Si oui : 12V sur COM, fil NO → serrure, serrure HS. Si non : carte relais hors
-            ligne. Le colis reste en attente et le code reste valable.</td></tr>
-    <tr><td>Porte ouverte mais le casier <b>ne passe pas</b> « récupéré » puis « libre »</td>
-        <td>Reed du casier : la porte doit être vue ouverte dans les 30 s. Vérifier « Porte casier N » dans HA
-            (voir ci-dessous).</td></tr>
-    <tr><td>Porte toujours « ouverte » dans HA</td>
-        <td>Fil reed coupé · GND commun débranché · aimant trop loin (plus de 2 mm de jeu).</td></tr>
-    <tr><td>Porte toujours « fermée » dans HA</td>
-        <td>Court-circuit vers GND · reed collé.</td></tr>
-    <tr><td>Badge refusé (rouge)</td>
-        <td>Badge non enrôlé (carte Destinataires, icône carte d'identité) · destinataire sans colis en attente.</td></tr>
-    <tr><td>Le digicode n'envoie rien (logs ESPHome vides)</td>
-        <td>Clavier sorti du mode Wiegand 26 : taper <code>* 123456 # 0 31 #</code> · D0/D1 inversés.</td></tr>
-    <tr><td>Relais inversés (actifs au repos)</td>
-        <td>Selon la version du PCB : ajouter <code>inverted: true</code> sur les pins relais dans le YAML.</td></tr>
-  </table>
+  <h2><span class="n">8</span>Flash initial de la carte relais (sans USB natif)</h2>
+  <div class="cols" style="grid-template-columns: 1.25fr 1fr">
+    <ol class="steps">
+      <li>Couper le 12V de la carte relais.</li>
+      <li>Câbler l'adaptateur USB-UART : <b>TX → RX</b>, <b>RX → TX</b>, <b>GND → GND</b>, <b>5V → VCC</b>
+        (le 5V de l'adaptateur suffit pendant le flash).</li>
+      <li><b>Poser le cavalier entre G0 et GND</b> <u>avant</u> de brancher l'USB : l'ESP32 démarre alors en
+        mode flash.</li>
+      <li>Brancher l'USB, repérer le port (<code>ls /dev/ttyUSB*</code>), puis lancer :<br>
+        <code>esphome run esphome/smartlocker-relais.yaml --device /dev/ttyUSB0</code></li>
+      <li><b>Retirer le cavalier</b>, débrancher l'USB, remettre le 12V.</li>
+    </ol>
+    <div>
+      <div class="warn"><b>Cavalier G0 ↔ GND</b><br>
+        Sans lui, le flash échoue (« Failed to connect »). S'il reste en place, la carte ne démarre pas
+        normalement.</div>
+      <p class="small" style="margin-top:1.4mm">G0 est sur le connecteur droit, rangée 7, côté bord (voir
+        recto). Les mises à jour suivantes se font sans fil, en OTA depuis ESPHome dans HA.</p>
+    </div>
+  </div>
 
   <div class="cols" style="margin-top:1mm">
     <div>
@@ -236,11 +229,13 @@ Relais au repos (contact ouvert) :
       <ul>
         <li><b>Tester un reed</b> : relier le GPIO au GND avec un fil, l'entité doit passer à « fermé ».</li>
         <li><b>Mesurer un reed</b> : porte fermée = GPIO à 0 V, ouverte = 3,3 V.</li>
-        <li><b>Ouvrir sans HA</b> : voir l'ouverture de secours au recto (fil COM ↔ NO ou batterie sur NO).</li>
+        <li><b>Porte toujours « ouverte »</b> : fil coupé, GND commun débranché ou aimant trop loin
+          (plus de 2 mm). <b>Toujours « fermée »</b> : court-circuit vers GND ou reed collé.</li>
+        <li><b>Digicode muet</b> (rien dans les logs ESPHome) : remettre le clavier en Wiegand 26 avec
+          <code>* 123456 # 0 31 #</code>.</li>
+        <li><b>Tester l'éclairage</b> : bouton <b>Tester</b> de la carte Éclairage.</li>
         <li><b>Redémarrer HA</b> : sans risque, casiers, codes et assignations sont conservés.</li>
-        <li><b>Mise à jour</b> des ESP32 : OTA depuis ESPHome dans HA.</li>
-        <li><b>Flash initial carte relais</b> : USB-UART (TX→RX, RX→TX, GND, 5V), cavalier GPIO0–GND,
-          <code>esphome run esphome/smartlocker-relais.yaml --device /dev/ttyUSB0</code>, retirer le cavalier.</li>
+        <li><b>Ouvrir sans HA</b> : ouverture de secours, au recto.</li>
       </ul>
     </div>
     <div>
