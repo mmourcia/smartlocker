@@ -2,12 +2,14 @@ import uuid
 import voluptuous as vol
 
 from homeassistant.components import websocket_api
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.dispatcher import async_dispatcher_connect, async_dispatcher_send
 from homeassistant.exceptions import TemplateError
 from homeassistant.helpers.storage import Store
 
 from .const import (
     DOMAIN, STORE_KEY_RECIPIENTS, STORE_VERSION, DEFAULT_SETTINGS, TEMPLATE_KEYS, CHANNELS,
+    SIGNAL_RECIPIENTS, WS_RECIPIENTS_SUBSCRIBE,
 )
 from .messages import validate_templates
 from .notifier import migrate_recipient, split_services
@@ -24,6 +26,7 @@ async def async_setup_recipients(hass: HomeAssistant) -> None:
         await async_save(hass)
 
     websocket_api.async_register_command(hass, ws_list_recipients)
+    websocket_api.async_register_command(hass, ws_subscribe_recipients)
     websocket_api.async_register_command(hass, ws_add_recipient)
     websocket_api.async_register_command(hass, ws_update_recipient)
     websocket_api.async_register_command(hass, ws_delete_recipient)
@@ -41,9 +44,26 @@ async def async_save(hass: HomeAssistant) -> None:
         "recipients": hass.data[DOMAIN]["recipients"],
         "settings":   hass.data[DOMAIN]["settings"],
     })
+    # Cartes abonnees (smart_locker/recipients/subscribe) : liste a jour sans recharger
+    async_dispatcher_send(hass, SIGNAL_RECIPIENTS)
 
 
 # ── Destinataires ────────────────────────────────────────────────────────────
+
+@websocket_api.websocket_command({vol.Required("type"): WS_RECIPIENTS_SUBSCRIBE})
+@callback
+def ws_subscribe_recipients(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict) -> None:
+    """Souscription : la liste des destinataires, puis a chaque modification."""
+    @callback
+    def forward() -> None:
+        connection.send_message(
+            websocket_api.event_message(msg["id"], hass.data[DOMAIN]["recipients"])
+        )
+
+    connection.subscriptions[msg["id"]] = async_dispatcher_connect(hass, SIGNAL_RECIPIENTS, forward)
+    connection.send_result(msg["id"])
+    forward()
+
 
 @websocket_api.websocket_command({
     vol.Required("type"): "smart_locker/recipients/list",

@@ -292,6 +292,7 @@ de HA ou une coupure de courant ne perd donc ni les PIN ni les assignations.
 | Commande | Description |
 |---|---|
 | `smart_locker/recipients/list` | Liste des destinataires |
+| `smart_locker/recipients/subscribe` | Souscription : la liste des destinataires, puis à chaque modification (les cartes se mettent à jour sans rechargement) |
 | `smart_locker/recipients/add` | Ajouter un destinataire |
 | `smart_locker/recipients/update` | Modifier un destinataire |
 | `smart_locker/recipients/delete` | Supprimer un destinataire |
