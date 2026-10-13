@@ -449,6 +449,16 @@ window.customCards.push({
 
 // ─── Carte gestion des destinataires ────────────────────────────────────────
 
+const CHANNEL_LABELS = { email: 'Email', sms: 'SMS' };
+
+// Même règle que notifier.service_kind côté Python
+function serviceKind(service) {
+  const n = service.toLowerCase();
+  if (['smtp', 'mail', 'gmail', 'imap', 'email'].some(h => n.includes(h))) return 'email';
+  if (n.includes('sms')) return 'sms';
+  return 'other';
+}
+
 const RCSS = `
   :host { display: block; }
   ha-card { padding: 12px 16px 16px; }
@@ -752,14 +762,17 @@ class SmartLockerRecipientsCard extends HTMLElement {
       const row = document.createElement('div');
       row.className = 'person';
       const contact = [r.mobile, r.email].filter(Boolean).map(v => `<span>${this._esc(v)}</span>`).join('');
-      const services = r.notify_services || [];
+      const tags = [
+        ...(r.channels || []).map(c => CHANNEL_LABELS[c] || c),
+        ...(r.notify_services || []),
+      ];
       row.innerHTML = `
         <div class="p-main">
           <div class="p-name">${this._esc(r.first_name)} ${this._esc(r.last_name)}</div>
           <div class="p-contact">${contact || '<span class="svc-badge-none">Aucun contact</span>'}</div>
           <div class="p-tags">
-            ${services.length
-              ? services.map(s => `<span class="svc-badge">${this._esc(s)}</span>`).join('')
+            ${tags.length
+              ? tags.map(s => `<span class="svc-badge">${this._esc(s)}</span>`).join('')
               : '<span class="p-warn">Aucune notification</span>'}
             ${r.badge_id
               ? `<span class="p-badge" title="Badge ${this._esc(r.badge_id)}">
@@ -909,13 +922,19 @@ class SmartLockerRecipientsCard extends HTMLElement {
   _showForm(recipient) {
     const isNew = !recipient;
     const v = isNew
-      ? { first_name: '', last_name: '', mobile: '', email: '', notify_services: [] }
+      ? { first_name: '', last_name: '', mobile: '', email: '', channels: ['email'], notify_services: [] }
       : recipient;
 
-    // Services disponibles depuis hass.services.notify, sans les méta-services HA
+    // Canaux intégrés (email, SMS : configurés dans la carte Messages)
+    const chosen = new Set(v.channels || []);
+    const chHtml = Object.entries(CHANNEL_LABELS).map(([c, label]) =>
+      `<label class="svc-check ${chosen.has(c) ? 'active' : ''}">
+        <input type="checkbox" value="${c}" ${chosen.has(c) ? 'checked' : ''}>${label}</label>`).join('');
+
+    // Autres services HA (app mobile…) : les anciens services email / SMS sont remplacés par les canaux
     const _SKIP = new Set(['persistent_notification', 'all', 'notify']);
     const available = Object.keys(this._hass.services.notify || {})
-      .filter(s => !_SKIP.has(s))
+      .filter(s => !_SKIP.has(s) && serviceKind(s) === 'other')
       .sort();
     const selected = new Set(v.notify_services || []);
 
@@ -926,7 +945,7 @@ class SmartLockerRecipientsCard extends HTMLElement {
             ${this._esc(s)}
           </label>`
         ).join('')
-      : '<span style="font-size:0.8em;color:var(--secondary-text-color)">Aucun service notify disponible</span>';
+      : '<span style="font-size:0.8em;color:var(--secondary-text-color)">Aucun (l\'app mobile Companion en ajoute un par téléphone)</span>';
 
     const container = this.shadowRoot.getElementById('form-container');
     container.innerHTML = `
@@ -950,7 +969,9 @@ class SmartLockerRecipientsCard extends HTMLElement {
             <input id="f-email" type="email" value="${this._esc(v.email || '')}" placeholder="jean.dupont@example.com">
           </div>
         </div>
-        <div class="svc-label">Services de notification</div>
+        <div class="svc-label">Notifications</div>
+        <div class="svc-list" id="ch-list">${chHtml}</div>
+        <div class="svc-label">Autres services Home Assistant (optionnel)</div>
         <div class="svc-list" id="svc-list">${svcHtml}</div>
         <div class="form-actions">
           <button class="r-btn r-btn-secondary" id="f-cancel">Annuler</button>
@@ -963,13 +984,16 @@ class SmartLockerRecipientsCard extends HTMLElement {
     sr.getElementById('f-save').onclick   = () => this._save(isNew ? null : recipient.id);
 
     // Toggle visuel des badges-services
-    sr.getElementById('svc-list').addEventListener('click', e => {
+    const toggle = e => {
       const label = e.target.closest('.svc-check');
       if (!label) return;
+      e.preventDefault();
       const cb = label.querySelector('input[type=checkbox]');
       cb.checked = !cb.checked;
       label.classList.toggle('active', cb.checked);
-    });
+    };
+    sr.getElementById('ch-list').addEventListener('click', toggle);
+    sr.getElementById('svc-list').addEventListener('click', toggle);
 
     sr.getElementById('f-first').focus();
   }
@@ -980,9 +1004,13 @@ class SmartLockerRecipientsCard extends HTMLElement {
     const first_name = get('f-first'), last_name = get('f-last');
     const mobile = get('f-mobile'), email = get('f-email');
     const notify_services = [...sr.querySelectorAll('#svc-list input:checked')].map(cb => cb.value);
+    const channels = [...sr.querySelectorAll('#ch-list input:checked')].map(cb => cb.value);
 
+    // Champs obligatoires, et coordonnée requise par chaque canal coché
     let ok = true;
-    for (const [sel, val] of [['f-first', first_name], ['f-last', last_name]]) {
+    for (const [sel, val] of [['f-first', first_name], ['f-last', last_name],
+                              ['f-email', !channels.includes('email') || email],
+                              ['f-mobile', !channels.includes('sms') || mobile]]) {
       sr.getElementById(sel).classList.toggle('err', !val);
       if (!val) ok = false;
     }
@@ -992,7 +1020,7 @@ class SmartLockerRecipientsCard extends HTMLElement {
       const type = id ? 'smart_locker/recipients/update' : 'smart_locker/recipients/add';
       await this._hass.callWS({
         type, ...(id ? { recipient_id: id } : {}),
-        first_name, last_name, mobile, email, notify_services,
+        first_name, last_name, mobile, email, channels, notify_services,
       });
       sr.getElementById('form-container').innerHTML = '';
       await this._load();
@@ -1089,6 +1117,29 @@ const MCSS = RCSS + `
     font-size: 0.82em; white-space: pre-wrap; word-break: break-word;
   }
   .preview iframe { width: 100%; height: 360px; border: 1px solid var(--divider-color); border-radius: 8px; background: #fff; }
+
+  /* Section Envoi */
+  .sec-title { font-size: 0.9em; font-weight: 600; margin: 4px 2px 8px; }
+  .blk { border: 1px solid var(--divider-color); border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; }
+  .blk-h { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .blk-h ha-icon { --mdc-icon-size: 20px; color: var(--primary-color); }
+  .blk-h .t { font-weight: 600; flex: 1; }
+  .pill { font-size: 0.72em; font-weight: 600; padding: 2px 8px; border-radius: 10px; white-space: nowrap;
+          background: var(--secondary-background-color); color: var(--secondary-text-color); }
+  .pill.on { background: #43A04722; color: #2E7D32; }
+  .pill.off { background: #E5393522; color: #C62828; }
+  .send-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0 8px; }
+  .send-grid .field { margin-bottom: 8px; }
+  .send-grid select { width: 100%; box-sizing: border-box; padding: 6px 8px; border-radius: 6px; font-size: 0.85em;
+                      border: 1px solid var(--divider-color); background: var(--card-background-color);
+                      color: var(--primary-text-color); }
+  .blk-a { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .blk-a input { flex: 1; min-width: 140px; padding: 6px 8px; border-radius: 6px; font-size: 0.85em;
+                 border: 1px solid var(--divider-color); background: var(--card-background-color);
+                 color: var(--primary-text-color); }
+  .blk .hint { display: block; font-size: 0.72em; color: var(--secondary-text-color); }
+  .blk .st { font-size: 0.78em; color: var(--secondary-text-color); margin-top: 6px; }
+  .blk .st.err { color: #C62828; } .blk .st.ok { color: #2E7D32; }
 `;
 
 const MSG_FIELDS = [
@@ -1115,9 +1166,10 @@ class SmartLockerMessagesCard extends HTMLElement {
   async _load() {
     let settings = {}, info = { variables: {}, defaults: {} };
     try {
-      [settings, info] = await Promise.all([
+      [settings, info, this._channels] = await Promise.all([
         this._hass.callWS({ type: 'smart_locker/settings/get' }),
         this._hass.callWS({ type: 'smart_locker/messages/preview' }),
+        this._hass.callWS({ type: 'smart_locker/channels/get' }),
       ]);
     } catch (err) { console.error('SmartLocker messages load:', err); }
     this._defaults = info.defaults || {};
@@ -1138,6 +1190,9 @@ class SmartLockerMessagesCard extends HTMLElement {
         <div class="card-header">
           <div class="card-title"><ha-icon icon="mdi:message-text-outline"></ha-icon>Messages aux destinataires</div>
         </div>
+        <div class="sec-title">Envoi</div>
+        <div id="send"></div>
+        <div class="sec-title">Contenu des messages</div>
         <div class="form">
           <div class="svc-label">Variables (clic = insérer dans le champ actif) — templates Jinja Home Assistant</div>
           <div class="vars">
@@ -1159,6 +1214,7 @@ class SmartLockerMessagesCard extends HTMLElement {
       </ha-card>
     `;
     const sr = this.shadowRoot;
+    this._renderSend();
     this._active = sr.getElementById('f-msg_text');
     MSG_FIELDS.forEach(([key]) => sr.getElementById(`f-${key}`).addEventListener('focus', e => { this._active = e.target; }));
     sr.querySelectorAll('.var').forEach(btn => btn.onclick = () => this._insert(`{{ ${btn.dataset.var} }}`));
@@ -1169,6 +1225,102 @@ class SmartLockerMessagesCard extends HTMLElement {
       MSG_FIELDS.forEach(([key]) => { sr.getElementById(`f-${key}`).value = this._defaults[key] || ''; });
       this._preview();
     };
+  }
+
+  // ── Section Envoi : email (SMTP) et SMS (SMSFactor) intégrés ─────────────
+
+  _renderSend() {
+    const box = this.shadowRoot.getElementById('send');
+    if (!box || !this._channels) return;
+    const e = this._channels.email, m = this._channels.sms;
+    const pill = c => !c.configured ? '<span class="pill">● Non configuré</span>'
+      : c.last && c.last.error ? '<span class="pill off">● Erreur</span>'
+      : c.last && c.last.at ? '<span class="pill on">● OK</span>'
+      : '<span class="pill">● Configuré</span>';
+    const lastLine = c => !c.last || !c.last.at ? ''
+      : c.last.error ? `Dernier envoi en échec (${new Date(c.last.at).toLocaleString()}) : ${c.last.error}`
+      : `Dernier envoi réussi : ${new Date(c.last.at).toLocaleString()}`;
+    const f = (ch, key, label, value, type = 'text', placeholder = '') => `
+      <div class="field"><label>${label}</label>
+        <input data-ch="${ch}" data-k="${key}" type="${type}" value="${this._esc(value ?? '')}"
+               placeholder="${this._esc(placeholder)}" autocomplete="off"></div>`;
+    const secretPh = has => has ? '•••••• enregistré' : '';
+    box.innerHTML = `
+      <div class="blk">
+        <div class="blk-h"><ha-icon icon="mdi:email-outline"></ha-icon><span class="t">Email (SMTP)</span>${pill(e)}</div>
+        <div class="send-grid">
+          ${f('email', 'server', 'Serveur', e.server, 'text', 'smtp.gmail.com')}
+          ${f('email', 'port', 'Port', e.port, 'number')}
+          <div class="field"><label>Chiffrement</label>
+            <select data-ch="email" data-k="encryption">
+              ${[['starttls', 'STARTTLS (port 587)'], ['ssl', 'SSL/TLS (port 465)'], ['none', 'Aucun']].map(([v, l]) =>
+                `<option value="${v}" ${e.encryption === v ? 'selected' : ''}>${l}</option>`).join('')}
+            </select></div>
+          ${f('email', 'username', 'Identifiant', e.username, 'text', 'adresse@gmail.com')}
+          ${f('email', 'password', 'Mot de passe', '', 'password', secretPh(e.has_password))}
+          ${f('email', 'sender', 'Adresse d\'expédition', e.sender, 'email', 'adresse@gmail.com')}
+          ${f('email', 'sender_name', 'Nom affiché', e.sender_name, 'text', 'Casiers Pharmacie')}
+        </div>
+        <span class="hint">Gmail : utiliser un mot de passe d'application (compte Google › Sécurité).
+          Mot de passe laissé vide = mot de passe enregistré conservé.</span>
+        <div class="blk-a" style="margin-top:8px">
+          <button class="r-btn r-btn-primary" data-save="email">Enregistrer</button>
+          <input id="t-email" type="email" placeholder="Adresse pour un test" value="${this._esc(e.sender || '')}">
+          <button class="r-btn r-btn-secondary" data-test="email">Envoyer un test</button>
+        </div>
+        <div class="st" id="st-email">${this._esc(lastLine(e))}</div>
+      </div>
+      <div class="blk">
+        <div class="blk-h"><ha-icon icon="mdi:message-processing-outline"></ha-icon><span class="t">SMS (SMSFactor)</span>${pill(m)}</div>
+        <div class="send-grid">
+          ${f('sms', 'url', 'URL de l\'API', m.url)}
+          ${f('sms', 'token', 'Jeton API', '', 'password', secretPh(m.has_token))}
+          ${f('sms', 'sender', 'Expéditeur (11 car. max)', m.sender, 'text', 'PharmacieHV')}
+        </div>
+        <span class="hint">Jeton sur app.smsfactor.com › API (laissé vide = conservé). Numéros 06… convertis
+          en 336… automatiquement.</span>
+        <div class="blk-a" style="margin-top:8px">
+          <button class="r-btn r-btn-primary" data-save="sms">Enregistrer</button>
+          <input id="t-sms" type="tel" placeholder="Numéro pour un test">
+          <button class="r-btn r-btn-secondary" data-test="sms">Envoyer un test</button>
+        </div>
+        <div class="st" id="st-sms">${this._esc(lastLine(m))}</div>
+      </div>`;
+    box.querySelectorAll('[data-save]').forEach(b => b.onclick = () => this._saveChannel(b.dataset.save));
+    box.querySelectorAll('[data-test]').forEach(b => b.onclick = () => this._testChannel(b.dataset.test));
+  }
+
+  _sendStatus(channel, text, kind = '') {
+    const el = this.shadowRoot.getElementById(`st-${channel}`);
+    if (el) { el.textContent = text; el.className = `st ${kind}`; }
+  }
+
+  async _saveChannel(channel) {
+    const data = { type: 'smart_locker/channels/set', channel };
+    this.shadowRoot.querySelectorAll(`#send [data-ch="${channel}"]`).forEach(el => {
+      data[el.dataset.k] = el.dataset.k === 'port' ? parseInt(el.value, 10) || 587 : el.value;
+    });
+    try {
+      this._channels = await this._hass.callWS(data);
+      this._renderSend();
+      this._sendStatus(channel, 'Enregistré ✓', 'ok');
+    } catch (err) { this._sendStatus(channel, `Erreur : ${err.message || err}`, 'err'); }
+  }
+
+  async _testChannel(channel) {
+    const to = this.shadowRoot.getElementById(`t-${channel}`).value.trim();
+    if (!to) { this._sendStatus(channel, 'Indiquer une adresse ou un numéro pour le test.', 'err'); return; }
+    this._sendStatus(channel, 'Envoi en cours…');
+    try {
+      await this._hass.callWS({ type: 'smart_locker/channels/test', channel, to });
+      this._channels = await this._hass.callWS({ type: 'smart_locker/channels/get' });
+      this._renderSend();
+      this._sendStatus(channel, `✓ Message de test envoyé à ${to}`, 'ok');
+    } catch (err) {
+      try { this._channels = await this._hass.callWS({ type: 'smart_locker/channels/get' }); this._renderSend(); }
+      catch (_) { /* garde l'affichage */ }
+      this._sendStatus(channel, err.message || String(err), 'err');
+    }
   }
 
   _insert(text) {

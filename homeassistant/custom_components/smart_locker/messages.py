@@ -52,6 +52,11 @@ def render_messages(hass: HomeAssistant, templates: dict, variables: dict) -> di
     }
 
 
+def render_sample(hass: HomeAssistant) -> dict:
+    """Messages enregistres rendus avec le destinataire d'exemple (envois de test)."""
+    return render_messages(hass, hass.data[DOMAIN]["settings"], _SAMPLE)
+
+
 def validate_templates(hass: HomeAssistant, templates: dict) -> None:
     """Verifie que les templates se rendent avec des donnees d'exemple."""
     render_messages(hass, templates, _SAMPLE)
