@@ -6,7 +6,7 @@
 |---|---|---|
 | **ESPHome** (carte relais) | WiFi / API native | Commande serrures, lecture reed switches |
 | **ESPHome** (digicode) | WiFi / API native | Réception codes PIN saisis |
-| **WLED** | WiFi / API JSON + mDNS | Contrôleur des rubans LED (choisi dans la carte Éclairage) |
+| **WLED** | WiFi / API JSON + mDNS | Contrôleur des rubans LED (choisi dans la carte Matériel) |
 | **notify.\*** | SMTP / OAuth2 / Push | Notification au destinataire (configurable) |
 | **smart_locker** | Custom component | Logique métier, entités casiers, API WebSocket |
 
@@ -300,9 +300,11 @@ de HA ou une coupure de courant ne perd donc ni les PIN ni les assignations.
 | `smart_locker/badges/enroll` | Souscription : attend le prochain badge lu (`waiting`, `enrolled`, `conflict`, `timeout`, `cancelled`) |
 | `smart_locker/badges/assign` | Attribue un badge (`force` pour le reprendre à son propriétaire) ou le retire (`badge_id` vide) |
 | `smart_locker/messages/preview` | Rend les templates avec un destinataire d'exemple |
-| `smart_locker/hardware/status` | Appareils ESPHome et WLED disponibles, liaison casier par casier (bouton, porte, état) |
+| `smart_locker/hardware/status` | Appareils ESPHome et WLED disponibles, liaison casier par casier, état en ligne de la carte relais et du digicode, résultat du dernier envoi au WLED |
 | `smart_locker/leds/devices` | Lister les contrôleurs WLED de HA (`entry_id`, `title`, `host`) |
-| `smart_locker/leds/test` | Simuler une activité (allume l'éclairage) |
+| `smart_locker/leds/test` | Allume l'éclairage en forçant un envoi au WLED (diagnostic de joignabilité) |
+| `smart_locker/leds/identify` | Allume un seul casier en blanc (`locker_id`), pour le parcours de diagnostic |
+| `smart_locker/hardware/keypad_test` | Souscription : mode test du digicode (événements rapportés, rien n'est traité, 2 min max) |
 
 ### Paramètres
 

@@ -39,7 +39,7 @@ from .const import (
 )
 from .badges import BadgeEnrollment, async_setup_badges_ws, find_by_badge, full_name
 from .entity import LockerEntity
-from .hardware import Hardware, async_setup_hardware_ws
+from .hardware import Hardware, KeypadTest, async_setup_hardware_ws, device_name
 from .leds import LedController, async_setup_leds_ws
 from .messages import async_setup_messages_ws, message_variables, render_messages
 from .recipients import async_setup_recipients
@@ -92,6 +92,8 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     hass.data[DOMAIN]["badges"] = badges
     async_setup_badges_ws(hass)
     async_setup_messages_ws(hass)
+    keypad_test = KeypadTest(hass)
+    hass.data[DOMAIN]["keypad_test"] = keypad_test
     async_setup_hardware_ws(hass)
 
     if CONF_PIN_SENSOR in (config.get(DOMAIN) or {}):
@@ -105,10 +107,33 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     # deux fois de suite declenche bien deux traitements.
 
     @callback
+    def report_test(event: Event, kind: str, **extra) -> bool:
+        """Mode test du digicode (carte Materiel) : rapporte l'evenement au lieu de le traiter."""
+        if not keypad_test.active:
+            return False
+        device_id = event.data.get("device_id")
+        keypad_test.report({
+            "type": kind,
+            "device": device_name(hass, device_id) or device_id or "appareil inconnu",
+            "accepted": hardware.accepts_keypad(event),
+            **extra,
+        })
+        return True
+
+    def waiting_lockers(rid: str | None = None, pin: str | None = None) -> list[int]:
+        return [
+            l.locker_id for l in lockers.values()
+            if l.state in (STATE_OCCUPIED, STATE_WAITING)
+            and (rid is None or rid in l.assigned_ids) and (pin is None or l.pin_code == pin)
+        ]
+
+    @callback
     def code_entered(event: Event) -> None:
+        entered_pin = str(event.data.get("code", "")).strip()
+        if report_test(event, "code", code=entered_pin, lockers=waiting_lockers(pin=entered_pin)):
+            return
         if not hardware.accepts_keypad(event):
             return
-        entered_pin = str(event.data.get("code", "")).strip()
         if not entered_pin:
             return
         for locker in lockers.values():
@@ -121,9 +146,15 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
     @callback
     def badge_scanned(event: Event) -> None:
+        badge_id = str(event.data.get("tag_id", "")).strip()
+        if keypad_test.active:
+            owner = find_by_badge(hass, badge_id)
+            report_test(event, "badge", badge_id=badge_id,
+                        recipient=full_name(owner) if owner else None,
+                        lockers=waiting_lockers(rid=owner["id"]) if owner else [])
+            return
         if not hardware.accepts_keypad(event):
             return
-        badge_id = str(event.data.get("tag_id", "")).strip()
         if not badge_id or badges.capture(badge_id):  # capture = enrolement en cours
             return
         recipient = find_by_badge(hass, badge_id)
@@ -198,12 +229,16 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
     @callback
     def keypad_activity(event: Event) -> None:
+        if report_test(event, "key"):
+            return
         if hardware.accepts_keypad(event):
             leds.activity()
 
     @callback
     def keypad_timeout(event: Event) -> None:
         # Saisie abandonnee : meme signal qu'un mauvais code, l'utilisateur peut recommencer
+        if report_test(event, "timeout"):
+            return
         if hardware.accepts_keypad(event):
             leds.show_error()
 

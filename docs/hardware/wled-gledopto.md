@@ -83,7 +83,7 @@ Les LED sont **éteintes par défaut**. Elles s'allument sur activité devant le
 - appui sur une touche du digicode (événement `esphome.keypad_key_pressed`) ;
 - badge RFID présenté ;
 - ouverture ou fermeture d'une porte ;
-- bouton **Tester** de la carte Éclairage.
+- boutons **Tester** et **Parcours** de la carte Matériel.
 
 Elles s'éteignent après la *durée d'allumage* (30 s par défaut) sans nouvelle activité. Une alerte
 « porte ouverte trop longtemps » reste visible même hors activité (seul le casier en alerte clignote).

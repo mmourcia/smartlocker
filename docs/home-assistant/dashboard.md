@@ -113,11 +113,8 @@ cards:
   # Templates des messages (titre, SMS, email)
   - type: custom:smart-locker-messages-card
 
-  # Carte relais, digicode et contrôleur LED, état de la liaison
+  # Carte relais, digicode et éclairage : choix, état et tests
   - type: custom:smart-locker-hardware-card
-
-  # Réglages de l'éclairage
-  - type: custom:smart-locker-leds-card
 
 ```
 
@@ -190,32 +187,43 @@ Syntaxe : templates Jinja Home Assistant, par exemple
 
 ### Carte Matériel (`smart-locker-hardware-card`)
 
-À configurer en premier sur une nouvelle installation.
+À configurer en premier sur une nouvelle installation, et premier endroit à regarder en cas de
+panne. Trois blocs, un par équipement, chacun avec son état (pastille) et son test :
+
+**Carte relais** · pastille *En ligne / Hors ligne*
 
 | Élément | Description |
 |---|---|
-| **Carte relais** | Appareil ESPHome des serrures et des portes. *Détection automatique* par défaut : le texte sous le choix indique l'appareil trouvé |
-| **Digicode** | Appareil ESPHome du clavier. Une fois choisi, les codes et badges des autres appareils sont ignorés |
-| **Contrôleur LED** | Appareil de l'intégration WLED. *Aucun* = LED désactivées |
-| **Liaison des casiers** | Pour chaque casier : bouton d'ouverture et capteur de porte trouvés (✓, avec leur identifiant) ou ✗ *Introuvable* ; état de la porte en direct |
+| Appareil | Appareil ESPHome des serrures et des portes. *Détection automatique* par défaut : le texte dessous indique l'appareil trouvé |
+| Liaison des casiers | Pour chaque casier : bouton d'ouverture et capteur de porte trouvés (✓, avec leur identifiant) ou ✗ *Introuvable* ; état de la porte en direct |
+| ▶ (par casier) | **Test** : actionne la serrure (après confirmation) et attend que le capteur voie la porte s'ouvrir (10 s). Résultat : ✓ *Serrure et capteur OK*, ou *Porte non détectée* (serrure bloquée, relais, aimant ou câblage du reed). L'état du casier n'est pas modifié |
 
 Un ✗ signifie que l'entité n'existe pas sur la carte relais : vérifier le YAML ESPHome (noms
 « Ouvrir casier N » / « Porte casier N ») ou que l'entité n'est pas désactivée dans HA.
 
-### Carte Éclairage (`smart-locker-leds-card`)
+**Digicode** · pastille *En ligne / Hors ligne / Non choisi*
 
 | Élément | Description |
 |---|---|
-| **Contrôleur WLED** | Rappel du contrôleur utilisé (il se choisit dans la carte Matériel) |
-| **Luminosité** | Luminosité globale (1-255) |
-| **Durée d'allumage** | Secondes d'éclairage après la dernière touche / porte |
-| **Alerte porte ouverte** | Secondes avant le clignotement orange d'une porte restée ouverte |
-| **Enregistrer** | Sauvegarde et applique immédiatement |
-| **Tester** | Allume l'éclairage comme si quelqu'un tapait sur le digicode |
-| Légende | Rappel du code couleur |
+| Appareil | Appareil ESPHome du clavier. Une fois choisi, les codes et badges des autres appareils sont ignorés |
+| **Mode test** | Pendant 2 minutes (ou jusqu'à *Arrêter le test*), tout ce qui arrive du digicode s'affiche au lieu d'être traité : touches, code saisi et casier correspondant (« Code 636913 → casier 4 », ou « aucun casier »), badge et destinataire, saisie abandonnée, appareil d'origine s'il n'est pas le digicode choisi. **Rien ne s'ouvre et l'éclairage ne réagit pas** pendant le test |
 
-Prérequis : le Gledopto doit être ajouté dans HA (**Paramètres › Appareils et services › WLED**),
-avec ses segments configurés (voir [Éclairage WLED](../hardware/wled-gledopto.md#segments)).
+**Éclairage** · pastille *Joignable / Injoignable / Non testé / Désactivé*
+
+| Élément | Description |
+|---|---|
+| Contrôleur WLED | Appareil de l'intégration WLED. *Aucun* = LED désactivées. En cas d'échec, le message d'erreur du dernier envoi est affiché |
+| Luminosité, Allumage, Alerte porte | Luminosité globale (1-255), secondes d'éclairage après la dernière activité, secondes de porte ouverte avant l'alerte orange |
+| **Tester** | Allume l'éclairage et vérifie que le WLED répond (la pastille se met à jour) |
+| **Parcours** | Allume chaque casier en blanc, l'un après l'autre (2 s chacun), en affichant son numéro : vérifie que chaque segment correspond au bon casier |
+
+**Enregistrer** (en bas) sauvegarde les appareils choisis et les réglages d'éclairage.
+
+Prérequis pour l'éclairage : le Gledopto ajouté dans HA (**Paramètres › Appareils et services ›
+WLED**), avec ses segments configurés (voir [Éclairage WLED](../hardware/wled-gledopto.md#segments)).
+
+> **Carte Éclairage** (`smart-locker-leds-card`) : obsolète depuis la v0.8.0, ses réglages sont dans
+> la carte Matériel. Elle affiche désormais un simple message et peut être retirée.
 
 ### Carte Casiers (`smart-locker-lockers-card`)
 

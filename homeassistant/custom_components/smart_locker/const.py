@@ -73,6 +73,8 @@ BADGE_ENROLL_SECONDS = 30
 WS_LEDS_DEVICES = "smart_locker/leds/devices"
 WS_HARDWARE_STATUS = "smart_locker/hardware/status"
 WS_LEDS_TEST = "smart_locker/leds/test"
+WS_LEDS_IDENTIFY = "smart_locker/leds/identify"
+WS_KEYPAD_TEST = "smart_locker/hardware/keypad_test"
 
 DEFAULT_NOTIFICATION_TITLE = "Colis mis à disposition à la pharmacie"
 
@@ -87,6 +89,8 @@ COLOR_GREEN = [0, 255, 0]
 COLOR_BLUE = [0, 75, 255]
 COLOR_RED = [255, 0, 0]
 COLOR_ORANGE = [255, 110, 0]
+COLOR_WHITE = [255, 255, 255]
+LED_IDENTIFY_SECONDS = 2  # parcours de diagnostic : duree d'allumage de chaque casier
 
 # Templates Jinja des messages (cf. messages.py)
 TEMPLATE_KEYS = ("notification_title", "msg_text", "msg_email_html")

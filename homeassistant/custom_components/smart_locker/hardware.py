@@ -17,8 +17,10 @@ from collections.abc import Callable
 import voluptuous as vol
 
 from homeassistant.components import websocket_api
-from homeassistant.core import Event, HomeAssistant, callback
+from homeassistant.const import STATE_UNAVAILABLE
+from homeassistant.core import CALLBACK_TYPE, Event, HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr, entity_registry as er
+from homeassistant.helpers.event import async_call_later
 
 from .const import (
     DOMAIN,
@@ -26,7 +28,10 @@ from .const import (
     ESPHOME_BUTTON_OPEN,
     ESPHOME_DOOR_SENSOR,
     WS_HARDWARE_STATUS,
+    WS_KEYPAD_TEST,
 )
+
+KEYPAD_TEST_SECONDS = 120
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -136,10 +141,12 @@ class Hardware:
             st = self.hass.states.get(entity_id) if entity_id else None
             return st.state if st else None
 
+        keypad = self._settings.get("keypad_device_id") or None
         return {
             "relay": {
                 "device_id": self.relay_device_id,
                 "source": self.relay_source,
+                "online": self._online(list(self.buttons.values()) + list(self.doors.values())),
                 "lockers": {
                     str(lid): {
                         "button": self.button(lid),
@@ -149,8 +156,77 @@ class Hardware:
                     for lid in LOCKER_IDS
                 },
             },
-            "keypad": {"device_id": self._settings.get("keypad_device_id") or None},
+            "keypad": {
+                "device_id": keypad,
+                "online": self._online(device_entities(self.hass, keypad)) if keypad else None,
+            },
         }
+
+    def _online(self, entity_ids: list[str]) -> bool | None:
+        """En ligne si au moins une entite est disponible (ESPHome hors ligne = tout unavailable)."""
+        states = [self.hass.states.get(e) for e in entity_ids]
+        states = [st for st in states if st is not None]
+        if not states:
+            return None
+        return any(st.state != STATE_UNAVAILABLE for st in states)
+
+
+class KeypadTest:
+    """Mode test du digicode : les evenements sont rapportes a la carte Materiel au lieu
+    d'etre traites (rien ne s'ouvre, l'eclairage ne reagit pas)."""
+
+    def __init__(self, hass: HomeAssistant) -> None:
+        self.hass = hass
+        self._notify: Callable[[dict], None] | None = None
+        self._cancel_timer: CALLBACK_TYPE | None = None
+
+    @property
+    def active(self) -> bool:
+        return self._notify is not None
+
+    @callback
+    def start(self, notify: Callable[[dict], None]) -> CALLBACK_TYPE:
+        self._stop({"type": "end", "reason": "replaced"})
+        self._notify = notify
+
+        @callback
+        def _timeout(_now) -> None:
+            self._cancel_timer = None
+            self._stop({"type": "end", "reason": "timeout"})
+
+        self._cancel_timer = async_call_later(self.hass, KEYPAD_TEST_SECONDS, _timeout)
+        notify({"type": "start", "timeout": KEYPAD_TEST_SECONDS})
+
+        @callback
+        def _unsubscribe() -> None:
+            if self._notify is notify:
+                self._stop(None)
+
+        return _unsubscribe
+
+    @callback
+    def _stop(self, final: dict | None) -> None:
+        if self._cancel_timer:
+            self._cancel_timer()
+        notify, self._notify, self._cancel_timer = self._notify, None, None
+        if notify and final:
+            notify(final)
+
+    @callback
+    def report(self, payload: dict) -> None:
+        if self._notify:
+            self._notify(payload)
+
+
+def device_entities(hass: HomeAssistant, device_id: str | None) -> list[str]:
+    if not device_id:
+        return []
+    return [e.entity_id for e in er.async_entries_for_device(er.async_get(hass), device_id)]
+
+
+def device_name(hass: HomeAssistant, device_id: str | None) -> str | None:
+    device = dr.async_get(hass).async_get(device_id) if device_id else None
+    return (device.name_by_user or device.name) if device else None
 
 
 def esphome_devices(hass: HomeAssistant) -> list[dr.DeviceEntry]:
@@ -165,6 +241,7 @@ def esphome_devices(hass: HomeAssistant) -> list[dr.DeviceEntry]:
 
 def async_setup_hardware_ws(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_status)
+    websocket_api.async_register_command(hass, ws_keypad_test)
 
 
 @websocket_api.websocket_command({vol.Required("type"): WS_HARDWARE_STATUS})
@@ -183,4 +260,17 @@ def ws_status(hass: HomeAssistant, connection: websocket_api.ActiveConnection, m
             for e in hass.config_entries.async_entries("wled")
         ],
         **hardware.status(),
+        "leds": hass.data[DOMAIN]["leds"].status(),
     })
+
+
+@websocket_api.websocket_command({vol.Required("type"): WS_KEYPAD_TEST})
+@callback
+def ws_keypad_test(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict) -> None:
+    """Souscription : rapporte touches, codes, badges et abandons du digicode."""
+    @callback
+    def notify(payload: dict) -> None:
+        connection.send_message(websocket_api.event_message(msg["id"], payload))
+
+    connection.send_result(msg["id"])
+    connection.subscriptions[msg["id"]] = hass.data[DOMAIN]["keypad_test"].start(notify)

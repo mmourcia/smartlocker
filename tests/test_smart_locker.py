@@ -416,3 +416,65 @@ async def test_hardware_selection(hass, hass_ws_client, aioclient_mock):
     assert presses[-1].data["entity_id"] == ["button.neuve_ouvrir_4_2"]
     await ws.send_json({"id": 3, "type": "smart_locker/hardware/status"})
     assert (await asyncio.wait_for(ws.receive_json(), 2))["result"]["relay"]["source"] == "selected"
+
+
+async def test_keypad_test_mode(hass, hass_ws_client, aioclient_mock, setup):
+    """Mode test : codes, badges, touches et abandons rapportes, rien n'est traite."""
+    presses = setup
+    from custom_components.smart_locker.badges import async_assign_badge
+    await hass.services.async_call("smart_locker", "assign", {"locker_id": 4, "recipient_id": "r-jean"}, blocking=True)
+    pin = hass.states.get("smart_locker.casier_4").attributes["pin_code"]
+    await async_assign_badge(hass, "r-jean", "555")
+    ws = await hass_ws_client(hass)
+    await ws.send_json({"id": 1, "type": "smart_locker/hardware/keypad_test"})
+    assert (await asyncio.wait_for(ws.receive_json(), 2))["success"]
+    assert (await asyncio.wait_for(ws.receive_json(), 2))["event"]["type"] == "start"
+    n_led = aioclient_mock.call_count
+
+    async def fire(event, data):
+        hass.bus.async_fire(event, data); await hass.async_block_till_done()
+        return (await asyncio.wait_for(ws.receive_json(), 2))["event"]
+
+    ev = await fire("esphome.keypad_key_pressed", {})
+    assert ev["type"] == "key" and ev["accepted"] is True
+    ev = await fire("esphome.keypad_code_entered", {"code": pin})
+    assert ev["type"] == "code" and ev["code"] == pin and ev["lockers"] == [4]
+    ev = await fire("esphome.keypad_code_entered", {"code": "000000"})
+    assert ev["lockers"] == []
+    ev = await fire("esphome.badge_scanned", {"tag_id": "555"})
+    assert ev["recipient"] == "Jean Dupont" and ev["lockers"] == [4]
+    ev = await fire("esphome.badge_scanned", {"tag_id": "999"})
+    assert ev["recipient"] is None
+    ev = await fire("esphome.keypad_timeout", {})
+    assert ev["type"] == "timeout"
+    assert not presses, "rien ne s'ouvre en mode test"
+    assert aioclient_mock.call_count == n_led, "l'eclairage ne reagit pas en mode test"
+    assert hass.states.get("smart_locker.casier_4").state == "occupé"
+
+    # Fin automatique, puis retour au fonctionnement normal
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=121)); await hass.async_block_till_done()
+    assert (await asyncio.wait_for(ws.receive_json(), 2))["event"] == {"type": "end", "reason": "timeout"}
+    hass.bus.async_fire("esphome.keypad_code_entered", {"code": pin}); await hass.async_block_till_done()
+    assert presses[-1].data["entity_id"] == ["button.smart_locker_relais_ouvrir_casier_4"]
+
+
+async def test_led_diagnostics(hass, hass_ws_client, aioclient_mock, setup):
+    ws = await hass_ws_client(hass)
+    await ws.send_json({"id": 1, "type": "smart_locker/leds/test"})
+    await asyncio.wait_for(ws.receive_json(), 2); await hass.async_block_till_done()
+    await ws.send_json({"id": 2, "type": "smart_locker/hardware/status"})
+    st = (await asyncio.wait_for(ws.receive_json(), 2))["result"]
+    assert st["leds"]["configured"] and st["leds"]["last_ok"] and st["leds"]["last_error"] is None
+    assert st["relay"]["online"] is True and st["keypad"]["online"] is None
+    # Parcours : un seul casier allume, en blanc
+    await ws.send_json({"id": 3, "type": "smart_locker/leds/identify", "locker_id": 5})
+    await asyncio.wait_for(ws.receive_json(), 2); await hass.async_block_till_done()
+    s = segs(last(aioclient_mock))
+    assert s[5] == ((255, 255, 255), 0) and all(s[i] is None for i in (1, 2, 3, 4, 6, 7, 8))
+    # WLED injoignable : erreur remontee
+    aioclient_mock.clear_requests()
+    aioclient_mock.post("http://10.0.0.9/json/state", exc=asyncio.TimeoutError())
+    await ws.send_json({"id": 4, "type": "smart_locker/leds/test"})
+    await asyncio.wait_for(ws.receive_json(), 2); await hass.async_block_till_done()
+    await ws.send_json({"id": 5, "type": "smart_locker/hardware/status"})
+    assert (await asyncio.wait_for(ws.receive_json(), 2))["result"]["leds"]["last_error"]
