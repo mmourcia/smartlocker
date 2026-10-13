@@ -43,7 +43,8 @@ EVENT_KEYPAD_TIMEOUT = "esphome.keypad_timeout"
 # (evenement "tag_scanned"), declenchable par n'importe quel lecteur NFC de la maison.
 EVENT_BADGE_SCANNED = "esphome.badge_scanned"
 
-# Entites ESPHome - noms generés par l'intégration ESPHome
+# Anciens entity_id fixes de la carte relais : derniere solution si aucun appareil n'est
+# choisi ni detecte (cf. hardware.py)
 ESPHOME_BUTTON_OPEN = "button.smart_locker_relais_ouvrir_casier_{}"
 ESPHOME_DOOR_SENSOR = "binary_sensor.smart_locker_relais_porte_casier_{}"
 
@@ -70,6 +71,7 @@ BADGE_ENROLL_SECONDS = 30
 
 # Commandes WebSocket eclairage
 WS_LEDS_DEVICES = "smart_locker/leds/devices"
+WS_HARDWARE_STATUS = "smart_locker/hardware/status"
 WS_LEDS_TEST = "smart_locker/leds/test"
 
 DEFAULT_NOTIFICATION_TITLE = "Colis mis à disposition à la pharmacie"
@@ -113,6 +115,8 @@ DEFAULT_SETTINGS = {
     "notification_title": DEFAULT_NOTIFICATION_TITLE,
     "msg_text":           DEFAULT_MSG_TEXT,
     "msg_email_html":     DEFAULT_MSG_EMAIL_HTML,
+    "relay_device_id":    "",    # appareil ESPHome de la carte relais (vide = detection auto)
+    "keypad_device_id":   "",    # appareil ESPHome du digicode (vide = tous)
     "led_entry_id":       "",    # config entry de l'integration WLED
     "led_brightness":     190,   # 1-255
     "led_timeout":        30,    # s d'eclairage apres la derniere activite

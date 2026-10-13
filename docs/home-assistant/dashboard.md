@@ -113,7 +113,10 @@ cards:
   # Templates des messages (titre, SMS, email)
   - type: custom:smart-locker-messages-card
 
-  # Choix du contrôleur WLED et réglages de l'éclairage
+  # Carte relais, digicode et contrôleur LED, état de la liaison
+  - type: custom:smart-locker-hardware-card
+
+  # Réglages de l'éclairage
   - type: custom:smart-locker-leds-card
 
 ```
@@ -139,7 +142,7 @@ pour tous les casiers, sur téléphone comme sur grand écran.
 > compartiment technique. L'entité orpheline `smart_locker.casier_3` peut aussi être supprimée
 > (**Paramètres › Entités**).
 
-Les cinq types de cartes peuvent aussi être placés sur des vues séparées
+Les six types de cartes peuvent aussi être placés sur des vues séparées
 — elles proviennent du même fichier JS, aucune ressource supplémentaire à déclarer.
 
 ---
@@ -185,11 +188,25 @@ Syntaxe : templates Jinja Home Assistant, par exemple
 `{% if has_badge %}ou présentez votre badge{% endif %}`. Liste des variables :
 [intégrations](integrations.md#messages).
 
+### Carte Matériel (`smart-locker-hardware-card`)
+
+À configurer en premier sur une nouvelle installation.
+
+| Élément | Description |
+|---|---|
+| **Carte relais** | Appareil ESPHome des serrures et des portes. *Détection automatique* par défaut : le texte sous le choix indique l'appareil trouvé |
+| **Digicode** | Appareil ESPHome du clavier. Une fois choisi, les codes et badges des autres appareils sont ignorés |
+| **Contrôleur LED** | Appareil de l'intégration WLED. *Aucun* = LED désactivées |
+| **Liaison des casiers** | Pour chaque casier : bouton d'ouverture et capteur de porte trouvés (✓, avec leur identifiant) ou ✗ *Introuvable* ; état de la porte en direct |
+
+Un ✗ signifie que l'entité n'existe pas sur la carte relais : vérifier le YAML ESPHome (noms
+« Ouvrir casier N » / « Porte casier N ») ou que l'entité n'est pas désactivée dans HA.
+
 ### Carte Éclairage (`smart-locker-leds-card`)
 
 | Élément | Description |
 |---|---|
-| **Contrôleur WLED** | Liste des appareils de l'intégration WLED de HA. *Aucun* = LED désactivées |
+| **Contrôleur WLED** | Rappel du contrôleur utilisé (il se choisit dans la carte Matériel) |
 | **Luminosité** | Luminosité globale (1-255) |
 | **Durée d'allumage** | Secondes d'éclairage après la dernière touche / porte |
 | **Alerte porte ouverte** | Secondes avant le clignotement orange d'une porte restée ouverte |

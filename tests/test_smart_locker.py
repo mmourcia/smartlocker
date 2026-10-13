@@ -16,6 +16,10 @@ async def setup(hass, aioclient_mock):
     entry = MockConfigEntry(domain="wled", title="WLED-Gledopto", data={"host": "10.0.0.9"})
     entry.add_to_hass(hass)
     presses = async_mock_service(hass, "button", "press")
+    # Carte relais aux anciens entity_id fixes (installation existante)
+    for i in (1, 2, 4, 5, 6, 7, 8):
+        hass.states.async_set(f"button.smart_locker_relais_ouvrir_casier_{i}", "unknown")
+        hass.states.async_set(f"binary_sensor.smart_locker_relais_porte_casier_{i}", "off")
     with patch("custom_components.smart_locker._async_setup_frontend"), \
          patch("custom_components.smart_locker.leds.time.monotonic", lambda: CLOCK[0]):
         assert await async_setup_component(hass, "smart_locker", {"smart_locker": None})
@@ -251,6 +255,7 @@ async def test_lockers_survive_restart(hass, hass_storage, aioclient_mock):
     hass_storage["smart_locker_recipients"] = {"version": 1, "key": "smart_locker_recipients", "data": {
         "recipients": [{"id": "r1", "first_name": "Anne", "last_name": "Martin"}], "settings": {}}}
     presses = async_mock_service(hass, "button", "press")
+    hass.states.async_set("button.smart_locker_relais_ouvrir_casier_4", "unknown")
     with patch("custom_components.smart_locker._async_setup_frontend"):
         assert await async_setup_component(hass, "smart_locker", {"smart_locker": None})
         await hass.async_block_till_done()
@@ -346,3 +351,68 @@ async def test_out_of_service(hass, aioclient_mock, setup):
     pin6 = hass.states.get("smart_locker.casier_6").attributes["pin_code"]
     hass.bus.async_fire("esphome.keypad_code_entered", {"code": pin6}); await hass.async_block_till_done()
     assert presses[-1].data["entity_id"] == ["button.smart_locker_relais_ouvrir_casier_6"]
+
+
+async def test_hardware_selection(hass, hass_ws_client, aioclient_mock):
+    """Nouvelle instance : entites ESPHome aux noms imprevus, retrouvees par leur nom d'origine."""
+    from homeassistant.exceptions import ServiceValidationError
+    from homeassistant.helpers import device_registry as dr, entity_registry as er
+    presses = async_mock_service(hass, "button", "press")
+    dreg, ereg = dr.async_get(hass), er.async_get(hass)
+    esp = MockConfigEntry(domain="esphome", title="esphome"); esp.add_to_hass(hass)
+    relay = dreg.async_get_or_create(config_entry_id=esp.entry_id, identifiers={("esphome", "relais")},
+                                     name="Carte relais neuve")
+    keypad = dreg.async_get_or_create(config_entry_id=esp.entry_id, identifiers={("esphome", "digicode")},
+                                      name="Digicode neuf")
+    for i in (1, 2, 4, 5, 6, 7):  # casier 8 non cable
+        b = ereg.async_get_or_create("button", "esphome", f"mac-button-ouvrir_casier_{i}", device_id=relay.id,
+                                     original_name=f"Ouvrir casier {i}", suggested_object_id=f"neuve_ouvrir_{i}_2")
+        d = ereg.async_get_or_create("binary_sensor", "esphome", f"mac-binary_sensor-porte_casier_{i}",
+                                     device_id=relay.id, original_name=f"Porte casier {i}",
+                                     suggested_object_id=f"neuve_porte_{i}_2")
+        hass.states.async_set(d.entity_id, "off")
+    with patch("custom_components.smart_locker._async_setup_frontend"):
+        assert await async_setup_component(hass, "smart_locker", {"smart_locker": None})
+        await hass.async_block_till_done()
+    hass.data["smart_locker"]["recipients"].append({"id": "r", "first_name": "Jean", "last_name": "Dupont"})
+
+    # Detection automatique de la carte relais
+    ws = await hass_ws_client(hass)
+    await ws.send_json({"id": 1, "type": "smart_locker/hardware/status"})
+    st = (await asyncio.wait_for(ws.receive_json(), 2))["result"]
+    assert st["relay"]["source"] == "auto" and st["relay"]["device_id"] == relay.id
+    assert st["relay"]["lockers"]["1"]["button"] == "button.neuve_ouvrir_1_2"
+    assert st["relay"]["lockers"]["8"]["button"] is None
+    assert {d["name"] for d in st["esphome"]} == {"Carte relais neuve", "Digicode neuf"}
+    assert hass.states.get("smart_locker.casier_1").attributes["door_entity"] == "binary_sensor.neuve_porte_1_2"
+
+    # Bon code -> bon bouton ; porte -> recupere
+    await hass.services.async_call("smart_locker", "assign", {"locker_id": 1, "recipient_id": "r"}, blocking=True)
+    pin = hass.states.get("smart_locker.casier_1").attributes["pin_code"]
+    hass.bus.async_fire("esphome.keypad_code_entered", {"code": pin}); await hass.async_block_till_done()
+    assert presses[-1].data["entity_id"] == ["button.neuve_ouvrir_1_2"]
+    hass.states.async_set("binary_sensor.neuve_porte_1_2", "on"); await hass.async_block_till_done()
+    assert hass.states.get("smart_locker.casier_1").state == "récupéré"
+
+    # Casier 8 sans bouton : erreur explicite
+    with pytest.raises(ServiceValidationError):
+        await hass.services.async_call("smart_locker", "open", {"locker_id": 8}, blocking=True)
+
+    # Entite renommee dans HA : la liaison suit
+    ereg.async_update_entity("button.neuve_ouvrir_2_2", new_entity_id="button.renommee")
+    await hass.async_block_till_done()
+    assert hass.data["smart_locker"]["hardware"].button(2) == "button.renommee"
+
+    # Digicode choisi : les evenements d'un autre appareil sont ignores
+    await ws.send_json({"id": 2, "type": "smart_locker/settings/set", "keypad_device_id": keypad.id,
+                        "relay_device_id": relay.id})
+    assert (await asyncio.wait_for(ws.receive_json(), 2))["success"]
+    await hass.services.async_call("smart_locker", "assign", {"locker_id": 4, "recipient_id": "r"}, blocking=True)
+    pin4 = hass.states.get("smart_locker.casier_4").attributes["pin_code"]
+    n = len(presses)
+    hass.bus.async_fire("esphome.keypad_code_entered", {"code": pin4, "device_id": "autre"}); await hass.async_block_till_done()
+    assert len(presses) == n
+    hass.bus.async_fire("esphome.keypad_code_entered", {"code": pin4, "device_id": keypad.id}); await hass.async_block_till_done()
+    assert presses[-1].data["entity_id"] == ["button.neuve_ouvrir_4_2"]
+    await ws.send_json({"id": 3, "type": "smart_locker/hardware/status"})
+    assert (await asyncio.wait_for(ws.receive_json(), 2))["result"]["relay"]["source"] == "selected"

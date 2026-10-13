@@ -21,7 +21,8 @@ class LockerEntity(Entity):
     _attr_should_poll = False
 
     def __init__(self, locker_id: int, data: dict | None = None,
-                 on_change: Callable[[], None] | None = None) -> None:
+                 on_change: Callable[[], None] | None = None,
+                 door_of: Callable[[int], str | None] | None = None) -> None:
         data = data or {}
         self._locker_id = locker_id
         self._state = data.get("state", STATE_FREE)
@@ -32,6 +33,7 @@ class LockerEntity(Entity):
         self._retrieved_at: str | None = data.get("retrieved_at")
         self._notified_at: dict[str, str] = dict(data.get("notified_at", {}))
         self._on_change = on_change
+        self._door_of = door_of
 
     # ── Persistance ─────────────────────────────────────────────────────────
 
@@ -107,6 +109,8 @@ class LockerEntity(Entity):
             # Noms affiches (compatibilite automatisations existantes)
             "assigned_users":      [a["name"] for a in assigned],
         }
+        if self._door_of and (door := self._door_of(self._locker_id)):
+            attrs["door_entity"] = door  # capteur de porte resolu (cf. hardware.py)
         if self._pin_code:
             attrs["pin_code"] = self._pin_code
         if self._retrieved_at:

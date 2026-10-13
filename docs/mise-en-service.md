@@ -96,14 +96,17 @@ Détails : [dashboard, section configuration.yaml](home-assistant/dashboard.md#c
 
 ## 7. Dashboard
 
-Créer un tableau de bord avec les cartes Casiers (vue d'ensemble), Destinataires, Messages et Éclairage (YAML prêt à
+Créer un tableau de bord avec les cartes Casiers (vue d'ensemble), Matériel, Destinataires, Messages et Éclairage (YAML prêt à
 coller : [dashboard](home-assistant/dashboard.md#cartes-lovelace)). Si une carte affiche une erreur
 de configuration, vider le cache du navigateur (Ctrl+Maj+R).
 
-Puis, dans la carte **Éclairage** : choisir le contrôleur WLED, régler la luminosité, **Enregistrer**,
-cliquer **Tester**.
+Puis, dans la carte **Matériel** : choisir la carte relais, le digicode et le contrôleur WLED,
+**Enregistrer**. Dans la carte **Éclairage** : régler la luminosité, cliquer **Tester**.
 
-✅ **Contrôle** : **Tester** allume les 7 casiers en vert ; le compartiment technique reste éteint.
+✅ **Contrôle** :
+- dans la carte Matériel, les 7 casiers sont ✓ pour l'ouverture et la porte, et l'état de chaque
+  porte change quand on l'ouvre ;
+- **Tester** allume les 7 casiers en vert ; le compartiment technique reste éteint.
 
 ---
 

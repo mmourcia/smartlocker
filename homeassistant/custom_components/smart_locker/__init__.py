@@ -7,7 +7,7 @@ from homeassistant.components.http import StaticPathConfig
 from homeassistant.const import EVENT_HOMEASSISTANT_STARTED, STATE_OFF, STATE_ON
 from homeassistant.core import Event, HomeAssistant, ServiceCall, callback
 from homeassistant.exceptions import ServiceValidationError, TemplateError
-from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import config_validation as cv, entity_registry as er
 from homeassistant.helpers.entity_component import EntityComponent
 from homeassistant.helpers.event import async_call_later, async_track_state_change_event
 from homeassistant.helpers.storage import Store
@@ -28,8 +28,6 @@ from .const import (
     OPEN_CONFIRM_SECONDS,
     STORE_KEY_LOCKERS,
     STORE_VERSION,
-    ESPHOME_BUTTON_OPEN,
-    ESPHOME_DOOR_SENSOR,
     CONF_PIN_SENSOR,
     EVENT_CODE_ENTERED,
     EVENT_KEY_PRESSED,
@@ -41,6 +39,7 @@ from .const import (
 )
 from .badges import BadgeEnrollment, async_setup_badges_ws, find_by_badge, full_name
 from .entity import LockerEntity
+from .hardware import Hardware, async_setup_hardware_ws
 from .leds import LedController, async_setup_leds_ws
 from .messages import async_setup_messages_ws, message_variables, render_messages
 from .recipients import async_setup_recipients
@@ -74,8 +73,14 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             lambda: {"lockers": {str(i): l.as_dict() for i, l in lockers.items()}}, 1
         )
 
-    lockers = {i: LockerEntity(i, saved.get(str(i)), _save_lockers) for i in LOCKER_IDS}
-    hass.data[DOMAIN] = {"lockers": lockers}
+    # Liaison materiel (carte relais, digicode) : cf. hardware.py. Le rappel est appele
+    # quand les entites des casiers changent ; bind_doors est defini plus bas.
+    hardware = Hardware(hass, lambda: bind_doors())
+
+    lockers = {
+        i: LockerEntity(i, saved.get(str(i)), _save_lockers, hardware.door) for i in LOCKER_IDS
+    }
+    hass.data[DOMAIN] = {"lockers": lockers, "hardware": hardware}
     await async_setup_recipients(hass)  # avant l'ajout : les entites affichent les noms
     component = EntityComponent(_LOGGER, DOMAIN, hass)
     await component.async_add_entities(lockers.values())
@@ -87,6 +92,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     hass.data[DOMAIN]["badges"] = badges
     async_setup_badges_ws(hass)
     async_setup_messages_ws(hass)
+    async_setup_hardware_ws(hass)
 
     if CONF_PIN_SENSOR in (config.get(DOMAIN) or {}):
         _LOGGER.warning(
@@ -100,6 +106,8 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
     @callback
     def code_entered(event: Event) -> None:
+        if not hardware.accepts_keypad(event):
+            return
         entered_pin = str(event.data.get("code", "")).strip()
         if not entered_pin:
             return
@@ -113,6 +121,8 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
     @callback
     def badge_scanned(event: Event) -> None:
+        if not hardware.accepts_keypad(event):
+            return
         badge_id = str(event.data.get("tag_id", "")).strip()
         if not badge_id or badges.capture(badge_id):  # capture = enrolement en cours
             return
@@ -138,13 +148,18 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     awaiting_door: dict[int, callback] = {}
 
     @callback
-    def press_relays(locker_ids) -> None:
-        """Impulsion relais (alim dimensionnee pour 7 solenoides simultanes)."""
-        hass.async_create_task(hass.services.async_call(
-            "button", "press",
-            {"entity_id": [ESPHOME_BUTTON_OPEN.format(lid) for lid in locker_ids]},
-        ))
+    def press_relays(locker_ids) -> list[int]:
+        """Impulsion relais (alim dimensionnee pour 7 solenoides simultanes).
+        Retourne les casiers dont le bouton d'ouverture est introuvable."""
+        missing = [lid for lid in locker_ids if not hardware.button(lid)]
+        if missing:
+            _LOGGER.error(
+                "Casier(s) %s : bouton d'ouverture introuvable - verifier la carte Materiel", missing
+            )
+        if buttons := [hardware.button(lid) for lid in locker_ids if hardware.button(lid)]:
+            hass.async_create_task(hass.services.async_call("button", "press", {"entity_id": buttons}))
         leds.show_access(*locker_ids)
+        return missing
 
     @callback
     def open_lockers(targets: list) -> None:
@@ -155,7 +170,8 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             lid = locker.locker_id
             if cancel := awaiting_door.pop(lid, None):
                 cancel()
-            door = hass.states.get(ESPHOME_DOOR_SENSOR.format(lid))
+            door_id = hardware.door(lid)
+            door = hass.states.get(door_id) if door_id else None
             if door and door.state == STATE_ON:  # porte deja ouverte (mal refermee)
                 retrieved(locker)
                 continue
@@ -181,13 +197,15 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         _LOGGER.info("Casier %s : colis recupere", locker.locker_id)
 
     @callback
-    def keypad_activity(_event: Event) -> None:
-        leds.activity()
+    def keypad_activity(event: Event) -> None:
+        if hardware.accepts_keypad(event):
+            leds.activity()
 
     @callback
-    def keypad_timeout(_event: Event) -> None:
+    def keypad_timeout(event: Event) -> None:
         # Saisie abandonnee : meme signal qu'un mauvais code, l'utilisateur peut recommencer
-        leds.show_error()
+        if hardware.accepts_keypad(event):
+            leds.show_error()
 
     hass.bus.async_listen(EVENT_CODE_ENTERED, code_entered)
     hass.bus.async_listen(EVENT_KEY_PRESSED, keypad_activity)
@@ -196,7 +214,8 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
     # --- Eclairage : portes et etats des casiers ----------------------------
 
-    door_to_locker = {ESPHOME_DOOR_SENSOR.format(i): i for i in LOCKER_IDS}
+    door_to_locker: dict[str, int] = {}
+    door_unsub: list = []
 
     @callback
     def door_changed(event: Event) -> None:
@@ -208,7 +227,8 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         # Reconnexion ESPHome (unavailable -> off) : pas une activite
         if (was_known and old_state.state == new_state.state) or (not was_known and new_state.state == STATE_OFF):
             return
-        locker_id = door_to_locker[event.data["entity_id"]]
+        if (locker_id := door_to_locker.get(event.data["entity_id"])) is None:
+            return
         is_open = new_state.state == STATE_ON
         locker = lockers[locker_id]
         if is_open and (cancel := awaiting_door.pop(locker_id, None)):
@@ -223,13 +243,36 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     def locker_changed(_event: Event) -> None:
         leds.render()
 
-    async_track_state_change_event(hass, list(door_to_locker), door_changed)
+    @callback
+    def bind_doors() -> None:
+        """(Re)abonnement aux capteurs de porte resolus ; republie door_entity."""
+        while door_unsub:
+            door_unsub.pop()()
+        door_to_locker.clear()
+        door_to_locker.update({door: lid for lid, door in hardware.doors.items()})
+        if door_to_locker:
+            door_unsub.append(
+                async_track_state_change_event(hass, list(door_to_locker), door_changed)
+            )
+        for locker in lockers.values():
+            locker.refresh()
+
+    @callback
+    def registry_updated(_event: Event) -> None:
+        # Carte adoptee ou entite renommee apres le demarrage
+        if hass.is_running:
+            hardware.resolve()
+
+    hass.bus.async_listen(er.EVENT_ENTITY_REGISTRY_UPDATED, registry_updated)
+    hardware.resolve()
+    bind_doors()
     async_track_state_change_event(
         hass, [locker.entity_id for locker in lockers.values()], locker_changed
     )
 
     @callback
     def _start_leds(_event: Event | None = None) -> None:
+        hardware.resolve()  # les entites ESPHome sont chargees au demarrage complet
         for entity_id, locker_id in door_to_locker.items():
             state = hass.states.get(entity_id)
             if state and state.state == STATE_ON:
@@ -279,7 +322,11 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             _LOGGER.error("Casier %s introuvable", locker_id)
             return
         # Ouverture par l'administrateur (depot, verification) : pas de changement d'etat
-        press_relays([locker_id])
+        if press_relays([locker_id]):
+            raise ServiceValidationError(
+                f"Casier {locker_id} : bouton d'ouverture introuvable sur la carte relais "
+                "- vérifier la carte Matériel"
+            )
         _LOGGER.info("Casier %s ouvert depuis le dashboard", locker_id)
 
     async def handle_unassign(call: ServiceCall) -> None:

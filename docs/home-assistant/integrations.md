@@ -24,6 +24,19 @@ Entités exposées (N = numéro du casier : 1, 2, 4…8 — la case 3 est le com
 | `switch.smart_locker_relais_relais_casier_N` | Switch | Relais brut — **ne pas utiliser** (pas de limite de durée, le solénoïde grille) |
 | `binary_sensor.smart_locker_relais_porte_casier_N` | Binary sensor | État physique de la porte (reed switch) |
 
+Les identifiants ci-dessus sont ceux générés par défaut. **Le composant ne s'y fie pas** : il
+retrouve les entités sur l'appareil ESPHome de la carte relais d'après leur **nom d'origine**
+(« Ouvrir casier N », « Porte casier N »). Un suffixe ajouté par HA (`_2`…) ou un renommage dans HA
+ne casse donc pas la liaison. Ordre de résolution :
+
+1. l'appareil choisi dans la carte **Matériel** ;
+2. à défaut, **détection automatique** : l'appareil ESPHome qui porte le plus de ces entités ;
+3. à défaut, les identifiants par défaut ci-dessus (installations antérieures à la v0.8.0).
+
+La liaison est recalculée quand on change d'appareil et quand une entité ESPHome est ajoutée ou
+modifiée. La carte **Matériel** affiche le résultat casier par casier ; un casier sans bouton
+d'ouverture est signalé dans les journaux et le bouton **Ouvrir** renvoie une erreur explicite.
+
 ---
 
 ## ESPHome — Digicode Wiegand
@@ -46,6 +59,10 @@ Le composant `smart_locker` écoute directement les **événements** `esphome.ke
 nécessaire**. Écouter l'événement plutôt que le capteur garantit qu'un même PIN saisi deux fois de
 suite est bien traité deux fois.
 
+Si un digicode est choisi dans la carte **Matériel**, seuls ses événements sont pris en compte
+(champ `device_id` ajouté par HA à chaque événement ESPHome). Sans choix, tous les appareils ESPHome
+sont écoutés.
+
 > L'ancienne option `pin_sensor` de `configuration.yaml` est obsolète : elle est ignorée (avec un
 > avertissement dans les logs) et peut être retirée.
 
@@ -55,7 +72,7 @@ suite est bien traité deux fois.
 
 Le contrôleur est ajouté par découverte automatique (intégration **WLED**). Le composant n'utilise
 pas ses entités `light.*` : il récupère l'adresse IP dans l'entrée d'intégration choisie dans la
-carte **Éclairage**, puis pilote les 8 segments en une requête `POST /json/state`.
+carte **Matériel**, puis pilote les 8 segments en une requête `POST /json/state`.
 
 Segments, câblage et code couleur : [Éclairage WLED](../hardware/wled-gledopto.md).
 
@@ -130,7 +147,7 @@ Titre, texte et HTML de l'email sont des templates éditables dans la carte **Me
 À chaque événement `esphome.keypad_code_entered`, le composant cherche un casier `occupé` ou
 `en_attente` dont le PIN correspond :
 
-- **trouvé** : appui sur `button.smart_locker_relais_ouvrir_casier_N`, LED du casier en vert
+- **trouvé** : appui sur le bouton « Ouvrir casier N » de la carte relais, LED du casier en vert
   clignotant (les autres éteintes). Voir [cycle de récupération](#cycle-de-récupération) ;
 - **non trouvé** : avertissement dans les logs, tous les casiers clignotent en rouge 3 s.
 
@@ -242,6 +259,8 @@ Les données sont stockées dans `.storage/smart_locker_recipients` (JSON, gér�
     "notification_title": "Colis mis à disposition à la pharmacie",
     "msg_text": "Bonjour {{ first_name }}, …",
     "msg_email_html": "<html>…</html>",
+    "relay_device_id": "a1b2…",
+    "keypad_device_id": "c3d4…",
     "led_entry_id": "01J…",
     "led_brightness": 190,
     "led_timeout": 30,
@@ -281,6 +300,7 @@ de HA ou une coupure de courant ne perd donc ni les PIN ni les assignations.
 | `smart_locker/badges/enroll` | Souscription : attend le prochain badge lu (`waiting`, `enrolled`, `conflict`, `timeout`, `cancelled`) |
 | `smart_locker/badges/assign` | Attribue un badge (`force` pour le reprendre à son propriétaire) ou le retire (`badge_id` vide) |
 | `smart_locker/messages/preview` | Rend les templates avec un destinataire d'exemple |
+| `smart_locker/hardware/status` | Appareils ESPHome et WLED disponibles, liaison casier par casier (bouton, porte, état) |
 | `smart_locker/leds/devices` | Lister les contrôleurs WLED de HA (`entry_id`, `title`, `host`) |
 | `smart_locker/leds/test` | Simuler une activité (allume l'éclairage) |
 
@@ -291,6 +311,8 @@ de HA ou une coupure de courant ne perd donc ni les PIN ni les assignations.
 | `notification_title` | *Colis mis à disposition à la pharmacie* | Template du titre (objet email, titre push) |
 | `msg_text` | *Bonjour {{ first_name }}, un colis…* | Template du texte (SMS, push, texte de l'email) |
 | `msg_email_html` | Email avec PIN en grand | Template du corps HTML de l'email |
+| `relay_device_id` | *(vide)* | Appareil ESPHome de la carte relais ; vide = détection automatique |
+| `keypad_device_id` | *(vide)* | Appareil ESPHome du digicode ; vide = tous les appareils écoutés |
 | `led_entry_id` | *(vide)* | Entrée de l'intégration WLED à piloter ; vide = LED désactivées |
 | `led_brightness` | 190 | Luminosité globale WLED (1-255) |
 | `led_timeout` | 30 | Secondes d'éclairage après la dernière activité (5-3600) |

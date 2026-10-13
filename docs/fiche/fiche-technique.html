@@ -83,7 +83,7 @@
       <h1>Smart Locker · Fiche technique</h1>
       <div class="sub">Recto : câblage · Verso : dépannage. À laisser dans le compartiment technique (case 3).</div>
     </div>
-    <div class="side">Composant smart_locker v0.7.0<br>Mise à jour : 12/10/2026</div>
+    <div class="side">Composant smart_locker v0.8.0<br>Mise à jour : 12/10/2026</div>
   </header>
 
   <h2><span class="n">1</span>Correspondance par casier</h2>
@@ -186,7 +186,7 @@ Relais au repos (contact ouvert) :
       <h1>Smart Locker · Dépannage</h1>
       <div class="sub">Tout ce qu'il faut savoir avant d'ouvrir la documentation.</div>
     </div>
-    <div class="side">Dashboard HA : cartes Casiers, Destinataires,<br>Messages et Éclairage</div>
+    <div class="side">Dashboard HA : cartes Casiers, Matériel,<br>Destinataires, Messages et Éclairage</div>
   </header>
 
   <h2><span class="n">7</span>Ce que disent les LED</h2>
@@ -233,6 +233,8 @@ Relais au repos (contact ouvert) :
           (plus de 2 mm). <b>Toujours « fermée »</b> : court-circuit vers GND ou reed collé.</li>
         <li><b>Digicode muet</b> (rien dans les logs ESPHome) : remettre le clavier en Wiegand 26 avec
           <code>* 123456 # 0 31 #</code>.</li>
+        <li><b>Une serrure ne répond pas</b> : carte <b>Matériel</b>, « Liaison des casiers » : ✗ = entité
+          introuvable sur la carte relais ; l'état des portes s'y affiche en direct.</li>
         <li><b>Tester l'éclairage</b> : bouton <b>Tester</b> de la carte Éclairage.</li>
         <li><b>Redémarrer HA</b> : sans risque, casiers, codes et assignations sont conservés.</li>
         <li><b>Ouvrir sans HA</b> : ouverture de secours, au recto.</li>

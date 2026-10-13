@@ -369,7 +369,7 @@ class SmartLockerCard extends HTMLElement {
     }
 
     // Etat physique de la porte
-    const doorEntity = this._hass.states[this._doorEntityId];
+    const doorEntity = this._hass.states[entity.attributes.door_entity || this._doorEntityId];
     const doorBadge = sr.getElementById('door-badge');
     if (doorEntity) {
       const isOpen = doorEntity.state === 'on';
@@ -1082,15 +1082,10 @@ class SmartLockerLedsCard extends HTMLElement {
   }
 
   _render(devices, s) {
-    const known = devices.some(d => d.entry_id === s.led_entry_id);
-    const options = [
-      `<option value="" ${!s.led_entry_id ? 'selected' : ''}>— Aucun (LED désactivées) —</option>`,
-      ...devices.map(d =>
-        `<option value="${this._esc(d.entry_id)}" ${d.entry_id === s.led_entry_id ? 'selected' : ''}>
-          ${this._esc(d.title)}${d.host ? ` (${this._esc(d.host)})` : ''}</option>`),
-      ...(s.led_entry_id && !known
-        ? [`<option value="${this._esc(s.led_entry_id)}" selected>⚠ Appareil introuvable</option>`] : []),
-    ].join('');
+    // Le contrôleur se choisit dans la carte Matériel ; rappel en lecture seule ici
+    const current = devices.find(d => d.entry_id === s.led_entry_id);
+    const controller = !s.led_entry_id ? 'Aucun : LED désactivées'
+      : current ? `${current.title}${current.host ? ` (${current.host})` : ''}` : '⚠ Appareil introuvable';
     const num = (id, label, value, min, max, hint) => `
       <div class="field">
         <label>${label}</label>
@@ -1111,9 +1106,8 @@ class SmartLockerLedsCard extends HTMLElement {
           <div class="form-grid">
             <div class="field" style="grid-column: 1 / -1">
               <label>Contrôleur WLED</label>
-              <select id="f-entry">${options}</select>
-              <span class="hint">${devices.length ? 'Appareils de l\'intégration WLED de Home Assistant'
-                : 'Aucun appareil WLED : ajouter l\'intégration WLED dans Paramètres › Appareils et services'}</span>
+              <div>${this._esc(controller)}</div>
+              <span class="hint">À choisir dans la carte Matériel.</span>
             </div>
             ${num('f-bri', 'Luminosité', s.led_brightness, 1, 255, '1 à 255')}
             ${num('f-timeout', 'Durée d\'allumage (s)', s.led_timeout, 5, 3600, 'Après la dernière touche / porte')}
@@ -1146,7 +1140,6 @@ class SmartLockerLedsCard extends HTMLElement {
     try {
       await this._hass.callWS({
         type: 'smart_locker/settings/set',
-        led_entry_id:     sr.getElementById('f-entry').value,
         led_brightness:   int('f-bri'),
         led_timeout:      int('f-timeout'),
         door_alert_delay: int('f-door'),
@@ -1505,7 +1498,11 @@ class SmartLockerLockersCard extends HTMLElement {
     this._render();
   }
 
-  _door(i) { return `binary_sensor.smart_locker_relais_porte_casier_${i}`; }
+  // Capteur de porte résolu par le composant (carte Matériel), ancien nom fixe à défaut
+  _door(i) {
+    const e = this._hass && this._hass.states[`smart_locker.casier_${i}`];
+    return (e && e.attributes.door_entity) || `binary_sensor.smart_locker_relais_porte_casier_${i}`;
+  }
 
   _locker(i) {
     const e = this._hass.states[`smart_locker.casier_${i}`];
@@ -1683,5 +1680,181 @@ window.customCards.push({
   type:        'smart-locker-lockers-card',
   name:        'Smart Locker — Casiers',
   description: 'Vue d\'ensemble de tous les casiers, détail et actions au toucher',
+  preview:     false,
+});
+
+// ─── Carte matériel (carte relais, digicode, contrôleur LED) ─────────────────
+
+const HCSS = RCSS + `
+  .field { min-width: 0; margin-bottom: 10px; }
+  .field select {
+    width: 100%; box-sizing: border-box; padding: 7px 8px; border-radius: 6px; font-size: 0.88em;
+    border: 1px solid var(--divider-color); background: var(--card-background-color);
+    color: var(--primary-text-color);
+  }
+  .field .hint { font-size: 0.72em; color: var(--secondary-text-color); }
+  .field .hint.warn { color: #E65100; }
+  .status { font-size: 0.78em; color: var(--secondary-text-color); margin-right: auto; align-self: center; }
+  .status.err { color: #E53935; }
+  h3 { font-size: 0.85em; margin: 14px 0 6px; }
+  .links { display: flex; flex-direction: column; }
+  .link {
+    display: grid; grid-template-columns: 4.2em 1fr 1fr; gap: 6px; align-items: start;
+    padding: 6px 2px; border-bottom: 1px solid var(--divider-color); font-size: 0.82em;
+  }
+  .link:last-child { border-bottom: none; }
+  .link.head { font-weight: 600; color: var(--secondary-text-color); font-size: 0.75em; }
+  .link .c { font-weight: 600; }
+  .ok, .ko { display: flex; flex-direction: column; min-width: 0; }
+  .ok b { color: #43A047; } .ko b { color: #E53935; }
+  .ok small, .ko small { color: var(--secondary-text-color); overflow: hidden; text-overflow: ellipsis;
+                         white-space: nowrap; font-family: monospace; font-size: 0.85em; }
+`;
+
+class SmartLockerHardwareCard extends HTMLElement {
+  static getStubConfig() { return {}; }
+  constructor() {
+    super();
+    this.attachShadow({ mode: 'open' });
+    this._data = null;
+    this._sig = '';
+  }
+
+  setConfig(config) { this._config = config || {}; }
+
+  set hass(hass) {
+    this._hass = hass;
+    if (!this._loaded) { this._loaded = true; this._load(); return; }
+    // Etat des portes en direct
+    if (!this._data) return;
+    const sig = Object.values(this._data.relay.lockers)
+      .map(l => (l.door && hass.states[l.door] ? hass.states[l.door].state : '')).join(',');
+    if (sig !== this._sig) { this._sig = sig; this._renderLinks(); }
+  }
+
+  async _load() {
+    try {
+      const [data, settings] = await Promise.all([
+        this._hass.callWS({ type: 'smart_locker/hardware/status' }),
+        this._hass.callWS({ type: 'smart_locker/settings/get' }),
+      ]);
+      this._data = data;
+      this._settings = settings;
+    } catch (err) {
+      this.shadowRoot.innerHTML = `<style>${HCSS}</style><ha-card><p class="status err">Erreur : ${this._esc(err.message || err)}</p></ha-card>`;
+      return;
+    }
+    this._render();
+  }
+
+  _render() {
+    const d = this._data, s = this._settings;
+    const devOptions = (selected, emptyLabel) => [
+      `<option value="">${emptyLabel}</option>`,
+      ...d.esphome.map(e => `<option value="${this._esc(e.device_id)}" ${e.device_id === selected ? 'selected' : ''}>
+        ${this._esc(e.name)}${e.model ? ` · ${this._esc(e.model)}` : ''}</option>`),
+      ...(selected && !d.esphome.some(e => e.device_id === selected)
+        ? [`<option value="${this._esc(selected)}" selected>⚠ Appareil introuvable</option>`] : []),
+    ].join('');
+    const wledOptions = [
+      `<option value="">Aucun (LED désactivées)</option>`,
+      ...d.wled.map(w => `<option value="${this._esc(w.entry_id)}" ${w.entry_id === s.led_entry_id ? 'selected' : ''}>
+        ${this._esc(w.title)}${w.host ? ` (${this._esc(w.host)})` : ''}</option>`),
+      ...(s.led_entry_id && !d.wled.some(w => w.entry_id === s.led_entry_id)
+        ? [`<option value="${this._esc(s.led_entry_id)}" selected>⚠ Appareil introuvable</option>`] : []),
+    ].join('');
+
+    const relayName = (d.esphome.find(e => e.device_id === d.relay.device_id) || {}).name;
+    const relayHint = {
+      selected: ['', 'Appareil choisi.'],
+      auto: ['', `Détectée automatiquement : ${relayName || '?'}.`],
+      legacy: ['', 'Anciens noms d\'entités (button.smart_locker_relais_…). Choisir l\'appareil est plus sûr.'],
+      none: ['warn', 'Aucune carte relais trouvée : vérifier l\'intégration ESPHome.'],
+    }[d.relay.source] || ['', ''];
+
+    this.shadowRoot.innerHTML = `
+      <style>${HCSS}</style>
+      <ha-card>
+        <div class="card-header">
+          <div class="card-title"><ha-icon icon="mdi:chip"></ha-icon>Matériel</div>
+          <button class="r-icon-btn" id="b-reload" title="Actualiser"><ha-icon icon="mdi:refresh"></ha-icon></button>
+        </div>
+        <div class="form">
+          <div class="field">
+            <label>Carte relais (serrures et portes)</label>
+            <select id="f-relay">${devOptions(s.relay_device_id, 'Détection automatique')}</select>
+            <span class="hint ${relayHint[0]}">${this._esc(relayHint[1])}</span>
+          </div>
+          <div class="field">
+            <label>Digicode</label>
+            <select id="f-keypad">${devOptions(s.keypad_device_id, 'Tous les appareils ESPHome (non filtré)')}</select>
+            <span class="hint">Une fois choisi, seuls ses codes et badges sont pris en compte.</span>
+          </div>
+          <div class="field">
+            <label>Contrôleur LED (WLED)</label>
+            <select id="f-wled">${wledOptions}</select>
+            ${d.wled.length ? '' : '<span class="hint warn">Aucun appareil WLED : ajouter l\'intégration WLED.</span>'}
+          </div>
+          <div class="form-actions">
+            <span class="status" id="status"></span>
+            <button class="r-btn r-btn-primary" id="b-save">Enregistrer</button>
+          </div>
+        </div>
+        <h3>Liaison des casiers</h3>
+        <div class="links" id="links"></div>
+      </ha-card>`;
+    const sr = this.shadowRoot;
+    sr.getElementById('b-save').onclick = () => this._save();
+    sr.getElementById('b-reload').onclick = () => this._load();
+    this._renderLinks();
+  }
+
+  _renderLinks() {
+    const box = this.shadowRoot.getElementById('links');
+    if (!box || !this._data) return;
+    const cell = (entity, okLabel) => entity
+      ? `<span class="ok"><b>✓ ${okLabel}</b><small title="${this._esc(entity)}">${this._esc(entity)}</small></span>`
+      : `<span class="ko"><b>✗ Introuvable</b><small>—</small></span>`;
+    const doorLabel = entity => {
+      const st = entity && this._hass.states[entity];
+      return !st ? 'OK' : st.state === 'on' ? 'Ouverte' : st.state === 'off' ? 'Fermée' : st.state;
+    };
+    box.innerHTML = `<div class="link head"><span>Casier</span><span>Ouverture</span><span>Porte</span></div>`
+      + Object.entries(this._data.relay.lockers).map(([id, l]) => `
+        <div class="link"><span class="c">${this._esc(id)}</span>
+          ${cell(l.button, 'OK')}${cell(l.door, doorLabel(l.door))}</div>`).join('');
+  }
+
+  async _save() {
+    const sr = this.shadowRoot;
+    const status = sr.getElementById('status');
+    try {
+      this._settings = await this._hass.callWS({
+        type: 'smart_locker/settings/set',
+        relay_device_id:  sr.getElementById('f-relay').value,
+        keypad_device_id: sr.getElementById('f-keypad').value,
+        led_entry_id:     sr.getElementById('f-wled').value,
+      });
+      await this._load();
+      sr.getElementById('status').textContent = 'Enregistré ✓';
+    } catch (err) {
+      status.textContent = `Erreur : ${err.message || err}`;
+      status.classList.add('err');
+    }
+  }
+
+  _esc(s) {
+    return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  getCardSize() { return 6; }
+}
+
+customElements.define('smart-locker-hardware-card', SmartLockerHardwareCard);
+
+window.customCards.push({
+  type:        'smart-locker-hardware-card',
+  name:        'Smart Locker — Matériel',
+  description: 'Choix de la carte relais, du digicode et du contrôleur LED, état de la liaison',
   preview:     false,
 });

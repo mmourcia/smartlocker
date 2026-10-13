@@ -91,8 +91,8 @@ Elles s'éteignent après la *durée d'allumage* (30 s par défaut) sans nouvell
 ## Pilotage depuis Home Assistant
 
 1. Le Gledopto est ajouté dans HA via l'intégration **WLED** (découverte automatique).
-2. Dans la carte Lovelace **Éclairage** (`custom:smart-locker-leds-card`), choisir ce contrôleur.
-   Voir [dashboard](../home-assistant/dashboard.md#carte-éclairage-smart-locker-leds-card).
+2. Dans la carte Lovelace **Matériel** (`custom:smart-locker-hardware-card`), choisir ce contrôleur.
+   Voir [dashboard](../home-assistant/dashboard.md#carte-matériel-smart-locker-hardware-card).
 
 Le composant récupère l'adresse IP du contrôleur dans l'entrée de l'intégration WLED, puis envoie
 chaque changement en **une seule requête** `POST http://<ip>/json/state` contenant les 8 segments.
