@@ -19,73 +19,27 @@ Le composant enregistre automatiquement au démarrage :
 
 ## configuration.yaml
 
-### 1. Services de notification
+### Notifications : plus de bloc `notify:`
 
-Les services de notification sont sélectionnés **par destinataire** depuis la carte Destinataires
-(champ *Services de notification*). Déclarer ici les services HA souhaités — choisir une ou
-plusieurs options selon les moyens de contact disponibles.
+L'email (SMTP) et le SMS (SMSFactor) sont envoyés **par le composant lui-même**, à l'adresse et au
+mobile saisis dans la carte Destinataires. Ils se configurent dans la carte **Messages**, section
+*Envoi* : aucune ligne YAML.
 
-#### Option A — SMTP (Gmail, OVH, Office 365…)
+> **Pourquoi ?** Les services `notify` YAML (`platform: smtp`, `platform: rest`) sont l'ancien
+> système de Home Assistant, en cours d'abandon. Le nouveau (entités `notify`) n'accepte pas de
+> destinataire au moment de l'envoi : il faudrait une entité par personne, sans email HTML.
 
-```yaml
-notify:
-  - name: smtp_pharmacie
-    platform: smtp
-    server: smtp.gmail.com        # smtp.office365.com, ssl0.ovh.net…
-    port: 587
-    starttls: true
-    sender: pharmacie@gmail.com
-    username: pharmacie@gmail.com
-    password: !secret smtp_password   # mot de passe d'application Gmail
-```
+**Installation existante** : les destinataires qui utilisaient `smtp_xxx` / `smsfactor` sont basculés
+automatiquement sur les canaux *Email* / *SMS*. Tant que l'envoi intégré n'est pas configuré, ces
+anciens services restent utilisés ; une fois la section *Envoi* enregistrée et testée, les blocs
+`notify:` correspondants peuvent être retirés de `configuration.yaml`.
 
-> Pour Gmail : compte Google › Sécurité › Mots de passe des applications.
-> Créer un mot de passe dédié « Home Assistant ».
-
-#### Option B — Google Mail (intégration OAuth2, sans YAML)
-
-Ajouter l'intégration **Google Mail** via **Paramètres › Appareils et services**.
-Elle crée automatiquement le service `notify.google_mail`. Aucune ligne YAML supplémentaire.
-
-#### Option C — Application mobile (Companion App)
-
-Aucune configuration YAML. Le service est créé automatiquement à l'installation
-de l'app sur le téléphone. Son nom suit le format `notify.mobile_app_<nom_appareil>`.
-
-#### Option D — SMS via SMSFactor (API REST)
-
-Créer d'abord la clé dans `secrets.yaml` :
-
-```yaml
-# secrets.yaml
-smsfactor_token: "Bearer VOTRE_TOKEN_API_SMSFACTOR"
-```
-
-Puis dans `configuration.yaml` :
-
-```yaml
-notify:
-  - name: smsfactor
-    platform: rest
-    resource: https://api.smsfactor.com/send
-    method: GET
-    headers:
-      Authorization: !secret smsfactor_token
-      Accept: "application/json"
-    message_param_name: text
-    target_param_name: to
-    data:
-      pushtype: alert
-      sender: PharmacieHV        # nom affiché comme expéditeur (11 car. max)
-```
-
-> Le token API est disponible sur [app.smsfactor.com](https://app.smsfactor.com) › API.
-> La clé `Authorization` doit être hors guillemets dans YAML pour que `!secret` soit résolu.
-> Le champ **Tél mobile** du destinataire doit être renseigné (format `0612345678`).
+L'**app mobile Companion** reste utilisable : ses services `notify.mobile_app_<appareil>` se cochent
+par destinataire dans *Autres services Home Assistant*.
 
 ---
 
-### 2. Composant Smart Locker
+### Composant Smart Locker
 
 ```yaml
 smart_locker:
@@ -94,8 +48,8 @@ smart_locker:
 Aucune option. L'ancienne clé `pin_sensor` est obsolète et peut être retirée (le PIN est reçu par
 événement ESPHome).
 
-> Les destinataires et leurs badges, les messages et le contrôleur LED se gèrent entièrement
-> depuis les cartes **Destinataires**, **Messages** et **Éclairage** — aucune autre modification de
+> Les destinataires et leurs badges, les messages et leur envoi, et le matériel se gèrent entièrement
+> depuis les cartes **Destinataires**, **Messages** et **Matériel** — aucune autre modification de
 > `configuration.yaml` requise.
 
 ---
@@ -148,14 +102,16 @@ Les six types de cartes peuvent aussi être placés sur des vues séparées
 
 ### Carte Destinataires (`smart-locker-recipients-card`)
 
-- **Liste** : une fiche par destinataire, triée par nom (prénom et nom, téléphone et email, services
-  de notification, badge). Un destinataire sans service de notification est signalé « Aucune
+- **Liste** : une fiche par destinataire, triée par nom (prénom et nom, téléphone et email, canaux
+  *Email* / *SMS* et autres services, badge). Un destinataire sans aucun canal est signalé « Aucune
   notification ». Lisible sur téléphone sans défilement horizontal.
 - **Boutons** : carte d'identité (enrôler un badge), crayon (modifier), corbeille (supprimer),
   × à côté d'un badge (le retirer), **Ajouter** (formulaire inline).
-- **Formulaire** : 4 champs texte + liste des services `notify.*` disponibles dans HA (cases à cocher).
-  Sélectionner un ou plusieurs services par destinataire. Un destinataire peut recevoir à la fois
-  un email et un SMS si les deux services sont cochés.
+- **Formulaire** : prénom, nom, mobile, email, puis :
+  - **Notifications** : *Email* et/ou *SMS* (envoi intégré, configuré dans la carte Messages). Cocher
+    *Email* exige une adresse, *SMS* un mobile ;
+  - **Autres services Home Assistant** (optionnel) : par exemple `mobile_app_<téléphone>` pour une
+    notification sur l'app Companion.
 
 #### Badges
 
@@ -173,6 +129,10 @@ destinataire, le bandeau propose **Réattribuer** (le badge est retiré à l'anc
 
 | Élément | Description |
 |---|---|
+| **Envoi › Email (SMTP)** | Serveur, port, chiffrement (STARTTLS 587 / SSL 465 / aucun), identifiant, mot de passe, adresse d'expédition, nom affiché. Gmail : mot de passe d'application |
+| **Envoi › SMS (SMSFactor)** | URL de l'API, jeton, expéditeur (11 caractères max). Les numéros `06…` sont convertis en `336…` |
+| Pastille (par canal) | *Non configuré*, *Configuré*, *OK* (dernier envoi réussi) ou *Erreur* (avec le message) |
+| **Envoyer un test** | Envoie le message réel (destinataire d'exemple) à l'adresse ou au numéro indiqué ; l'erreur éventuelle s'affiche en clair |
 | **Titre** | Objet de l'email, titre de la notification push |
 | **Texte** | SMS, notification push, version texte de l'email |
 | **Email HTML** | Corps HTML de l'email |
@@ -180,6 +140,9 @@ destinataire, le bandeau propose **Réattribuer** (le badge est retiré à l'anc
 | **Aperçu** | Rend les trois templates avec un destinataire d'exemple (nombre de caractères du SMS, email affiché comme reçu) |
 | **Valeurs par défaut** | Recharge les templates d'origine (à enregistrer ensuite) |
 | **Enregistrer** | Valide puis sauvegarde ; un template invalide est refusé avec le message d'erreur |
+
+Le mot de passe SMTP et le jeton SMSFactor ne sont jamais réaffichés : un champ laissé vide conserve
+la valeur enregistrée.
 
 Syntaxe : templates Jinja Home Assistant, par exemple
 `{% if has_badge %}ou présentez votre badge{% endif %}`. Liste des variables :

@@ -67,19 +67,7 @@ Détails : [éclairage WLED](hardware/wled-gledopto.md).
 
 ---
 
-## 5. Services de notification
-
-Déclarer dans `configuration.yaml` les services `notify.*` à utiliser (SMTP, SMS SMSFactor…) ou
-installer l'app Companion.
-
-✅ **Contrôle** : **Outils de développement › Actions**, appeler le service `notify.xxx` avec un
-message de test : il arrive bien.
-
-Détails : [dashboard, section configuration.yaml](home-assistant/dashboard.md#configurationyaml).
-
----
-
-## 6. Composant smart_locker
+## 5. Composant smart_locker
 
 1. Copier [`homeassistant/custom_components/smart_locker/`](../homeassistant/custom_components/smart_locker/)
    dans `config/custom_components/smart_locker/`.
@@ -94,7 +82,7 @@ Détails : [dashboard, section configuration.yaml](home-assistant/dashboard.md#c
 
 ---
 
-## 7. Dashboard
+## 6. Dashboard
 
 Créer un tableau de bord avec les cartes Casiers (vue d'ensemble), Matériel, Destinataires et Messages (YAML prêt à
 coller : [dashboard](home-assistant/dashboard.md#cartes-lovelace)). Si une carte affiche une erreur
@@ -112,20 +100,22 @@ régler la luminosité, **Enregistrer**. Les trois pastilles doivent être verte
 
 ---
 
-## 8. Destinataires, badges et messages
+## 7. Destinataires, badges et messages
 
-1. Carte **Destinataires** : ajouter chaque destinataire (téléphone, email, services de
-   notification).
+1. Carte **Destinataires** : ajouter chaque destinataire (téléphone, email, canaux *Email* / *SMS*).
 2. Enrôler les badges : icône carte d'identité du destinataire, puis passer le badge devant le
    lecteur dans les 30 s.
-3. Carte **Messages** : adapter le titre, le SMS et l'email, vérifier avec **Aperçu**,
+3. Carte **Messages**, section *Envoi* : renseigner le SMTP (Gmail : mot de passe d'application) et
+   SMSFactor (jeton, expéditeur), **Enregistrer**, puis **Envoyer un test** pour chacun.
+4. Carte **Messages**, contenu : adapter le titre, le SMS et l'email, vérifier avec **Aperçu**,
    **Enregistrer**.
 
-✅ **Contrôle** : chaque badge apparaît dans la colonne Badge du bon destinataire.
+✅ **Contrôle** : chaque badge apparaît sur la fiche du bon destinataire ; les pastilles *Email* et
+*SMS* de la carte Messages sont *OK* et les messages de test sont bien arrivés.
 
 ---
 
-## 9. Recette
+## 8. Recette
 
 Un passage complet, à faire avec un destinataire de test et son téléphone :
 

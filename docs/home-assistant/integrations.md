@@ -80,39 +80,34 @@ Segments, câblage et code couleur : [Éclairage WLED](../hardware/wled-gledopto
 
 ## Notifications
 
-La notification est déclenchée par le bouton **Notifier** de la carte Lovelace.
-Les services utilisés sont configurés **par destinataire** dans la carte Destinataires — aucune
-clé globale dans `configuration.yaml`.
+La notification est déclenchée par le bouton **Notifier** (ou le service `smart_locker.notify`).
+Chaque destinataire a des **canaux** :
 
-### Services supportés
-
-| Service | Configuration | Nom dans HA |
+| Canal | Envoi | Coordonnée utilisée |
 |---|---|---|
-| SMTP (Gmail, OVH…) | Bloc `notify:` dans `configuration.yaml` | nom du bloc (ex : `smtp_pharmacie`) |
-| Google Mail | Intégration UI — Paramètres › Appareils | `google_mail` |
-| Application mobile | Companion App installée sur le téléphone | `mobile_app_<appareil>` |
-| SMS SMSFactor | Bloc `notify:` REST dans `configuration.yaml` | `smsfactor` (nom du bloc) |
+| `email` | Intégré : SMTP configuré dans la carte Messages (`notifier.py`, bibliothèque standard Python) | email du destinataire |
+| `sms` | Intégré : API HTTP SMSFactor configurée dans la carte Messages | mobile du destinataire, converti au format international (`0612…` → `33612…`) |
+| `notify_services` | Services HA (ex. `mobile_app_<appareil>`), appelés **sans** destinataire : ils sont déjà adressés | — |
 
-### Sélection automatique de la cible (`target`)
+- L'email contient la version texte et la version HTML (templates de la carte Messages), avec le nom
+  d'expéditeur configuré.
+- Un destinataire est marqué notifié si **au moins un** envoi a réussi ; sinon il reste notifiable.
+- Les échecs (identifiants SMTP refusés, crédit SMSFactor insuffisant, coordonnée manquante, canal non
+  configuré…) sont loggés **et renvoyés par le service** : la carte Casiers les affiche.
 
-Le composant détecte le type de service à partir de son nom :
+**Transition depuis les services `notify` YAML** : au premier démarrage, les services d'un
+destinataire dont le nom évoque l'email (`smtp`, `mail`…) ou le SMS (`sms`) sont convertis en canaux
+`email` / `sms` et conservés dans `legacy_services`. Tant que le canal intégré n'est pas configuré, ces
+anciens services sont appelés comme avant (avec `target`) ; dès qu'il l'est, ils sont ignorés et les
+blocs `notify:` peuvent être retirés.
 
-- Nom contenant `smtp`, `mail`, `gmail`, `imap` ou `email` → **service email**
-  - `target` = adresse email du destinataire
-  - Corps : version HTML avec PIN en grand
-- Autre nom → **service mobile/SMS**
-  - `target` = numéro de téléphone du destinataire
-
-Si le champ requis (email ou mobile) est vide pour un destinataire, le service est ignoré avec
-un avertissement dans les logs HA.
-
-Un destinataire peut avoir plusieurs services cochés (ex : email + SMS) — les deux sont envoyés.
-Un destinataire déjà notifié est ignoré si le bouton **Notifier** est rappuyé ; il redevient
-notifiable après la libération du casier.
+Un destinataire déjà notifié est ignoré si **Notifier** est rappuyé ; il redevient notifiable après
+la libération du casier.
 
 ### Contenu de la notification
 
-Titre, texte et HTML de l'email sont des templates éditables dans la carte **Messages**. Contenu entièrement personnalisable par templates, voir [Messages](#messages).
+Titre, texte et HTML de l'email sont des templates éditables dans la carte **Messages**, voir
+[Messages](#messages).
 
 ---
 
@@ -251,7 +246,9 @@ Les données sont stockées dans `.storage/smart_locker_recipients` (JSON, gér�
       "last_name": "Dupont",
       "mobile": "0612345678",
       "email": "jean.dupont@example.com",
-      "notify_services": ["smtp_pharmacie", "smsfactor"],
+      "channels": ["email", "sms"],
+      "notify_services": ["mobile_app_telephone"],
+      "legacy_services": ["smtp_gmail", "smsfactor"],
       "badge_id": "4823117"
     }
   ],
@@ -262,6 +259,9 @@ Les données sont stockées dans `.storage/smart_locker_recipients` (JSON, gér�
     "relay_device_id": "a1b2…",
     "keypad_device_id": "c3d4…",
     "led_entry_id": "01J…",
+    "email": {"server": "smtp.gmail.com", "port": 587, "encryption": "starttls",
+              "username": "…", "password": "…", "sender": "…", "sender_name": "Casiers Pharmacie"},
+    "sms": {"url": "https://api.smsfactor.com/send", "token": "…", "sender": "PharmacieHV"},
     "led_brightness": 190,
     "led_timeout": 30,
     "door_alert_delay": 60
@@ -300,6 +300,9 @@ de HA ou une coupure de courant ne perd donc ni les PIN ni les assignations.
 | `smart_locker/badges/enroll` | Souscription : attend le prochain badge lu (`waiting`, `enrolled`, `conflict`, `timeout`, `cancelled`) |
 | `smart_locker/badges/assign` | Attribue un badge (`force` pour le reprendre à son propriétaire) ou le retire (`badge_id` vide) |
 | `smart_locker/messages/preview` | Rend les templates avec un destinataire d'exemple |
+| `smart_locker/channels/get` | Configuration d'envoi email / SMS **sans les secrets** (`has_password`, `has_token`), état du dernier envoi |
+| `smart_locker/channels/set` | Enregistre un canal (`channel` = `email` ou `sms`) ; secret vide = inchangé |
+| `smart_locker/channels/test` | Envoie un message de test (`channel`, `to`) |
 | `smart_locker/hardware/status` | Appareils ESPHome et WLED disponibles, liaison casier par casier, état en ligne de la carte relais et du digicode, résultat du dernier envoi au WLED |
 | `smart_locker/leds/devices` | Lister les contrôleurs WLED de HA (`entry_id`, `title`, `host`) |
 | `smart_locker/leds/test` | Allume l'éclairage en forçant un envoi au WLED (diagnostic de joignabilité) |

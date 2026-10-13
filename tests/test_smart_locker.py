@@ -478,3 +478,115 @@ async def test_led_diagnostics(hass, hass_ws_client, aioclient_mock, setup):
     await asyncio.wait_for(ws.receive_json(), 2); await hass.async_block_till_done()
     await ws.send_json({"id": 5, "type": "smart_locker/hardware/status"})
     assert (await asyncio.wait_for(ws.receive_json(), 2))["result"]["leds"]["last_error"]
+
+
+class FakeSMTP:
+    """Serveur SMTP simule : enregistre les envois."""
+    sent, fail_auth = [], False
+
+    def __init__(self, host, port, timeout=None, **_):
+        self.host, self.port = host, port
+
+    def starttls(self, context=None):
+        pass
+
+    def login(self, user, password):
+        import smtplib
+        if FakeSMTP.fail_auth:
+            raise smtplib.SMTPAuthenticationError(535, b"refused")
+        self.user = user
+
+    def sendmail(self, sender, to, body):
+        FakeSMTP.sent.append((sender, to, body))
+
+    def quit(self):
+        pass
+
+
+async def test_channels_migration_and_legacy(hass, hass_storage, aioclient_mock):
+    """Anciens services YAML : migres en canaux, toujours utilises tant que rien n'est configure."""
+    hass_storage["smart_locker_recipients"] = {"version": 1, "key": "smart_locker_recipients", "data": {
+        "recipients": [{"id": "r1", "first_name": "Anne", "last_name": "Martin", "email": "a@m.fr",
+                        "mobile": "0612345678", "notify_services": ["smtp_gmail", "smsfactor", "mobile_app_tel"]}],
+        "settings": {}}}
+    mails = async_mock_service(hass, "notify", "smtp_gmail")
+    sms = async_mock_service(hass, "notify", "smsfactor")
+    push = async_mock_service(hass, "notify", "mobile_app_tel")
+    with patch("custom_components.smart_locker._async_setup_frontend"):
+        assert await async_setup_component(hass, "smart_locker", {"smart_locker": None})
+        await hass.async_block_till_done()
+    r = hass.data["smart_locker"]["recipients"][0]
+    assert r["channels"] == ["email", "sms"] and r["notify_services"] == ["mobile_app_tel"]
+    assert r["legacy_services"] == ["smtp_gmail", "smsfactor"]
+    assert hass_storage["smart_locker_recipients"]["data"]["recipients"][0]["channels"] == ["email", "sms"]
+
+    await hass.services.async_call("smart_locker", "assign", {"locker_id": 2, "recipient_id": "r1"}, blocking=True)
+    await hass.services.async_call("smart_locker", "notify", {"locker_id": 2}, blocking=True)
+    assert mails[-1].data["target"] == ["a@m.fr"] and "html" in mails[-1].data["data"]
+    assert sms[-1].data["target"] == ["0612345678"]
+    assert "target" not in push[-1].data, "app mobile : deja adressee, pas de destinataire"
+    assert hass.states.get("smart_locker.casier_2").state == "en_attente"
+
+
+async def test_channels_builtin(hass, hass_ws_client, aioclient_mock, setup):
+    from homeassistant.exceptions import HomeAssistantError
+    FakeSMTP.sent, FakeSMTP.fail_auth = [], False
+    legacy = async_mock_service(hass, "notify", "smtp_gmail")
+    ws = await hass_ws_client(hass)
+    hass.data["smart_locker"]["recipients"].append({
+        "id": "r2", "first_name": "Paul", "last_name": "Durand", "email": "p@d.fr", "mobile": "06 12 34 56 78",
+        "channels": ["email", "sms"], "notify_services": [], "legacy_services": ["smtp_gmail"]})
+
+    # Configuration : les secrets ne repartent jamais vers le navigateur
+    await ws.send_json({"id": 1, "type": "smart_locker/channels/set", "channel": "email",
+                        "server": "smtp.gmail.com", "port": 587, "encryption": "starttls", "username": "me@gmail.com",
+                        "password": "s3cret", "sender": "me@gmail.com", "sender_name": "Casiers Pharmacie"})
+    res = (await asyncio.wait_for(ws.receive_json(), 2))["result"]
+    assert res["email"]["configured"] and res["email"]["has_password"] and "password" not in res["email"]
+    await ws.send_json({"id": 2, "type": "smart_locker/channels/set", "channel": "sms", "token": "TOKEN", "sender": "PharmacieHV"})
+    assert (await asyncio.wait_for(ws.receive_json(), 2))["result"]["sms"]["configured"]
+    await ws.send_json({"id": 3, "type": "smart_locker/settings/get"})
+    assert "email" not in (await asyncio.wait_for(ws.receive_json(), 2))["result"]
+    # Mot de passe laisse vide a l'enregistrement : conserve
+    await ws.send_json({"id": 4, "type": "smart_locker/channels/set", "channel": "email", "password": "", "port": 587})
+    await asyncio.wait_for(ws.receive_json(), 2)
+    assert hass.data["smart_locker"]["settings"]["email"]["password"] == "s3cret"
+
+    aioclient_mock.get("https://api.smsfactor.com/send", json={"status": 1, "message": "OK"})
+    await hass.services.async_call("smart_locker", "assign", {"locker_id": 6, "recipient_id": "r2"}, blocking=True)
+    with patch("custom_components.smart_locker.notifier.smtplib.SMTP", FakeSMTP):
+        await hass.services.async_call("smart_locker", "notify", {"locker_id": 6}, blocking=True)
+    sender, to, body = FakeSMTP.sent[-1]
+    assert to == ["p@d.fr"] and "Casiers Pharmacie" in body and "text/html" in body
+    assert not legacy, "envoi integre configure : l'ancien service n'est plus utilise"
+    call = [c for c in aioclient_mock.mock_calls if c[0] == "GET"][-1]
+    assert call[1].query["to"] == "33612345678" and call[1].query["sender"] == "PharmacieHV"
+    assert call[3]["Authorization"] == "Bearer TOKEN"
+    assert hass.states.get("smart_locker.casier_6").state == "en_attente"
+
+    # Echec : l'erreur remonte, le destinataire reste notifiable
+    await hass.services.async_call("smart_locker", "reset", {"locker_id": 6}, blocking=True)
+    await hass.services.async_call("smart_locker", "assign", {"locker_id": 6, "recipient_id": "r2"}, blocking=True)
+    aioclient_mock.clear_requests()
+    aioclient_mock.get("https://api.smsfactor.com/send", json={"status": -2, "message": "Crédit insuffisant"})
+    FakeSMTP.fail_auth = True
+    with patch("custom_components.smart_locker.notifier.smtplib.SMTP", FakeSMTP), \
+         pytest.raises(HomeAssistantError) as exc:
+        await hass.services.async_call("smart_locker", "notify", {"locker_id": 6}, blocking=True)
+    assert "mot de passe d'application" in str(exc.value) and "Crédit insuffisant" in str(exc.value)
+    assert hass.states.get("smart_locker.casier_6").state == "occupé"
+
+    # Envois de test
+    FakeSMTP.fail_auth = False
+    with patch("custom_components.smart_locker.notifier.smtplib.SMTP", FakeSMTP):
+        await ws.send_json({"id": 5, "type": "smart_locker/channels/test", "channel": "email", "to": "test@x.fr"})
+        assert (await asyncio.wait_for(ws.receive_json(), 2))["success"]
+    import email, email.policy
+    mail = email.message_from_string(FakeSMTP.sent[-1][2], policy=email.policy.default)
+    assert FakeSMTP.sent[-1][1] == ["test@x.fr"] and mail["Subject"].startswith("[Test] ")
+    assert str(mail["From"]) == "Casiers Pharmacie <me@gmail.com>"
+    await ws.send_json({"id": 6, "type": "smart_locker/channels/test", "channel": "sms", "to": "0600000000"})
+    r = await asyncio.wait_for(ws.receive_json(), 2)
+    assert r["error"]["code"] == "send_failed" and "Crédit insuffisant" in r["error"]["message"]
+    await ws.send_json({"id": 7, "type": "smart_locker/channels/get"})
+    assert (await asyncio.wait_for(ws.receive_json(), 2))["result"]["sms"]["last"]["error"] == "Crédit insuffisant"

@@ -6,8 +6,11 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import TemplateError
 from homeassistant.helpers.storage import Store
 
-from .const import DOMAIN, STORE_KEY_RECIPIENTS, STORE_VERSION, DEFAULT_SETTINGS, TEMPLATE_KEYS
+from .const import (
+    DOMAIN, STORE_KEY_RECIPIENTS, STORE_VERSION, DEFAULT_SETTINGS, TEMPLATE_KEYS, CHANNELS,
+)
 from .messages import validate_templates
+from .notifier import migrate_recipient, split_services
 
 
 async def async_setup_recipients(hass: HomeAssistant) -> None:
@@ -16,6 +19,9 @@ async def async_setup_recipients(hass: HomeAssistant) -> None:
     hass.data[DOMAIN]["store"] = store
     hass.data[DOMAIN]["recipients"] = data.get("recipients", [])
     hass.data[DOMAIN]["settings"] = {**DEFAULT_SETTINGS, **data.get("settings", {})}
+    # Ancien format (services notify uniquement) -> canaux email / sms
+    if any([migrate_recipient(r) for r in hass.data[DOMAIN]["recipients"]]):
+        await async_save(hass)
 
     websocket_api.async_register_command(hass, ws_list_recipients)
     websocket_api.async_register_command(hass, ws_add_recipient)
@@ -53,17 +59,22 @@ async def ws_list_recipients(hass: HomeAssistant, connection: websocket_api.Acti
     vol.Required("last_name"): str,
     vol.Optional("mobile",          default=""): str,
     vol.Optional("email",           default=""): str,
+    vol.Optional("channels",        default=[]): [vol.In(CHANNELS)],
     vol.Optional("notify_services", default=[]): [str],
 })
 @websocket_api.async_response
 async def ws_add_recipient(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict) -> None:
+    # Un service notify email / sms passe par l'API (ancien client) devient le canal correspondant
+    channels, legacy, others = split_services(msg.get("notify_services", []))
     recipient = {
         "id":              str(uuid.uuid4()),
         "first_name":      msg["first_name"],
         "last_name":       msg["last_name"],
         "mobile":          msg.get("mobile", ""),
         "email":           msg.get("email", ""),
-        "notify_services": msg.get("notify_services", []),
+        "channels":        sorted(set(msg.get("channels", [])) | channels),
+        "notify_services": others,
+        "legacy_services": legacy,
         "badge_id":        "",
     }
     hass.data[DOMAIN]["recipients"].append(recipient)
@@ -78,11 +89,13 @@ async def ws_add_recipient(hass: HomeAssistant, connection: websocket_api.Active
     vol.Required("last_name"): str,
     vol.Optional("mobile",          default=""): str,
     vol.Optional("email",           default=""): str,
+    vol.Optional("channels",        default=[]): [vol.In(CHANNELS)],
     vol.Optional("notify_services", default=[]): [str],
 })
 @websocket_api.async_response
 async def ws_update_recipient(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict) -> None:
     recipients = hass.data[DOMAIN]["recipients"]
+    channels, legacy, others = split_services(msg.get("notify_services", []))
     for i, r in enumerate(recipients):
         if r["id"] == msg["recipient_id"]:
             recipients[i] = {
@@ -91,7 +104,10 @@ async def ws_update_recipient(hass: HomeAssistant, connection: websocket_api.Act
                 "last_name":       msg["last_name"],
                 "mobile":          msg.get("mobile", ""),
                 "email":           msg.get("email", ""),
-                "notify_services": msg.get("notify_services", []),
+                "channels":        sorted(set(msg.get("channels", [])) | channels),
+                "notify_services": others,
+                # Anciens services YAML (transition), non modifiables depuis la carte
+                "legacy_services": sorted(set(r.get("legacy_services", [])) | set(legacy)),
                 "badge_id":        r.get("badge_id", ""),  # gere par smart_locker/badges/*
             }
             await async_save(hass)
@@ -122,7 +138,12 @@ async def ws_delete_recipient(hass: HomeAssistant, connection: websocket_api.Act
 })
 @websocket_api.async_response
 async def ws_get_settings(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict) -> None:
-    connection.send_result(msg["id"], hass.data[DOMAIN]["settings"])
+    connection.send_result(msg["id"], public_settings(hass))
+
+
+def public_settings(hass: HomeAssistant) -> dict:
+    """Parametres sans la configuration d'envoi (secrets) : cf. smart_locker/channels/get."""
+    return {k: v for k, v in hass.data[DOMAIN]["settings"].items() if k not in CHANNELS}
 
 
 @websocket_api.websocket_command({
@@ -151,4 +172,4 @@ async def ws_set_settings(hass: HomeAssistant, connection: websocket_api.ActiveC
     await async_save(hass)
     hass.data[DOMAIN]["hardware"].resolve()
     hass.data[DOMAIN]["leds"].settings_changed()
-    connection.send_result(msg["id"], settings)
+    connection.send_result(msg["id"], public_settings(hass))

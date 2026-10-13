@@ -69,6 +69,19 @@ WS_BADGES_ASSIGN = "smart_locker/badges/assign"
 WS_MESSAGES_PREVIEW = "smart_locker/messages/preview"
 BADGE_ENROLL_SECONDS = 30
 
+# Envoi integre des notifications (cf. notifier.py)
+CHANNEL_EMAIL = "email"
+CHANNEL_SMS = "sms"
+CHANNELS = (CHANNEL_EMAIL, CHANNEL_SMS)
+SMTP_DEFAULTS = {
+    "server": "", "port": 587, "encryption": "starttls",   # starttls | ssl | none
+    "username": "", "password": "", "sender": "", "sender_name": "",
+}
+SMS_DEFAULTS = {"url": "https://api.smsfactor.com/send", "token": "", "sender": ""}
+WS_CHANNELS_GET = "smart_locker/channels/get"
+WS_CHANNELS_SET = "smart_locker/channels/set"
+WS_CHANNELS_TEST = "smart_locker/channels/test"
+
 # Commandes WebSocket eclairage
 WS_LEDS_DEVICES = "smart_locker/leds/devices"
 WS_HARDWARE_STATUS = "smart_locker/hardware/status"

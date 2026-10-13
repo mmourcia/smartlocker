@@ -6,7 +6,7 @@ import voluptuous as vol
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.const import EVENT_HOMEASSISTANT_STARTED, STATE_OFF, STATE_ON
 from homeassistant.core import Event, HomeAssistant, ServiceCall, callback
-from homeassistant.exceptions import ServiceValidationError, TemplateError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError, TemplateError
 from homeassistant.helpers import config_validation as cv, entity_registry as er
 from homeassistant.helpers.entity_component import EntityComponent
 from homeassistant.helpers.event import async_call_later, async_track_state_change_event
@@ -42,6 +42,7 @@ from .entity import LockerEntity
 from .hardware import Hardware, KeypadTest, async_setup_hardware_ws, device_name
 from .leds import LedController, async_setup_leds_ws
 from .messages import async_setup_messages_ws, message_variables, render_messages
+from .notifier import Notifier, async_setup_notifier_ws
 from .recipients import async_setup_recipients
 
 _LOGGER = logging.getLogger(__name__)
@@ -92,6 +93,9 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     hass.data[DOMAIN]["badges"] = badges
     async_setup_badges_ws(hass)
     async_setup_messages_ws(hass)
+    notifier = Notifier(hass)
+    hass.data[DOMAIN]["notifier"] = notifier
+    async_setup_notifier_ws(hass)
     keypad_test = KeypadTest(hass)
     hass.data[DOMAIN]["keypad_test"] = keypad_test
     async_setup_hardware_ws(hass)
@@ -387,6 +391,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         recipients = hass.data[DOMAIN]["recipients"]
         already_notified = locker.notified_ids
         notified = False  # au moins un destinataire notifie
+        errors: list[str] = []
 
         for rid in assigned:
             recipient = next((r for r in recipients if r["id"] == rid), None)
@@ -397,12 +402,9 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             if rid in already_notified:
                 _LOGGER.info("Utilisateur '%s' deja notifie pour casier %s - ignore", user, locker_id)
                 continue
-            email    = (recipient or {}).get("email",  "")
-            mobile   = (recipient or {}).get("mobile", "")
-            services = (recipient or {}).get("notify_services", [])
-
-            if not services:
-                _LOGGER.warning("Aucun service de notification configure pour '%s'", user)
+            if not (recipient.get("channels") or recipient.get("notify_services")):
+                errors.append(f"{user} : aucun canal de notification")
+                _LOGGER.warning("Aucun canal de notification pour '%s'", user)
                 continue
 
             try:
@@ -410,46 +412,14 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
                     hass, settings, message_variables(recipient, user, locker_id, pin)
                 )
             except TemplateError as err:
-                _LOGGER.error("Template de message invalide (carte Messages) : %s", err)
-                return
-            title, message, html = (
-                rendered["notification_title"], rendered["msg_text"], rendered["msg_email_html"]
+                raise HomeAssistantError(f"Template de message invalide (carte Messages) : {err}") from err
+
+            sent, user_errors = await notifier.async_notify(
+                recipient, rendered["notification_title"], rendered["msg_text"],
+                rendered["msg_email_html"],
             )
-
-            _EMAIL_SVC = ("smtp", "mail", "gmail", "imap", "email")
-            user_notified = False
-            for svc in services:
-                svc_is_email = any(k in svc.lower() for k in _EMAIL_SVC)
-                data: dict = {"title": title, "message": message}
-
-                if svc_is_email:
-                    if not email:
-                        _LOGGER.warning(
-                            "notify.%s nécessite un email mais '%s' n'en a pas", svc, user
-                        )
-                        continue
-                    data["target"] = [email]
-                    data["data"]   = {"html": html}
-                else:
-                    if not mobile:
-                        _LOGGER.warning(
-                            "notify.%s nécessite un numéro mobile mais '%s' n'en a pas — "
-                            "renseigner le champ Tél mobile dans la carte Destinataires",
-                            svc, user,
-                        )
-                        continue
-                    data["target"] = [mobile]
-
-                try:
-                    await hass.services.async_call("notify", svc, data)
-                    _LOGGER.info(
-                        "notify.%s → %s pour casier %s",
-                        svc, data["target"][0], locker_id,
-                    )
-                    user_notified = True
-                except Exception as err:
-                    _LOGGER.error("Erreur notify.%s pour %s : %s", svc, user, err)
-            if user_notified:
+            errors.extend(f"{user} · {e}" for e in user_errors)
+            if sent:
                 locker.mark_user_notified(rid)
                 notified = True
             else:
@@ -460,6 +430,12 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
         if notified:
             locker.notify_sent()
+        if errors:
+            # Remonte jusqu'a la carte : le gestionnaire voit ce qui n'est pas parti
+            raise HomeAssistantError(
+                ("Notification partielle. " if notified else "Aucune notification envoyée. ")
+                + " ; ".join(errors)
+            )
 
     async def handle_reset(call: ServiceCall) -> None:
         locker_id = call.data[ATTR_LOCKER_ID]
