@@ -19,6 +19,7 @@ from homeassistant.const import CONF_HOST
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.event import async_call_later
+from homeassistant.util import dt as dt_util
 
 from .const import (
     DOMAIN,
@@ -34,6 +35,9 @@ from .const import (
     COLOR_BLUE,
     COLOR_RED,
     COLOR_ORANGE,
+    COLOR_WHITE,
+    LED_IDENTIFY_SECONDS,
+    WS_LEDS_IDENTIFY,
     STATE_FREE,
     STATE_OCCUPIED,
     STATE_WAITING,
@@ -70,6 +74,9 @@ class LedController:
         self._lock = asyncio.Lock()
         self._desired: dict | None = None
         self._sent: dict | None = None
+        # Resultat du dernier envoi au WLED (diagnostic de la carte Materiel)
+        self.last_ok: str | None = None
+        self.last_error: str | None = None
 
     # ── Parametres ──────────────────────────────────────────────────────────
 
@@ -110,6 +117,27 @@ class LedController:
         self._scene = ("error", None, time.monotonic() + LED_ERROR_SECONDS)
         self._render_later(LED_ERROR_SECONDS)
         self.activity()
+
+    @callback
+    def show_identify(self, locker_id: int) -> None:
+        """Diagnostic : un seul casier allume en blanc, pour verifier le cablage des segments."""
+        self._scene = ("identify", frozenset({locker_id}), time.monotonic() + LED_IDENTIFY_SECONDS)
+        self._render_later(LED_IDENTIFY_SECONDS)
+        self.activity()
+
+    @callback
+    def test(self) -> None:
+        """Diagnostic : allume l'eclairage en forcant un envoi (verifie que le WLED repond)."""
+        self._sent = None
+        self.activity()
+
+    def status(self) -> dict:
+        return {
+            "configured": bool(self._settings.get("led_entry_id")),
+            "host": self._host() if self._settings.get("led_entry_id") else None,
+            "last_ok": self.last_ok,
+            "last_error": self.last_error,
+        }
 
     @callback
     def door_changed(self, locker_id: int, is_open: bool) -> None:
@@ -156,6 +184,9 @@ class LedController:
         if self._scene and self._scene[0] == "access":
             for lid in LOCKER_IDS:
                 specs[lid] = (COLOR_GREEN, FX_BLINK) if lid in self._scene[1] else _OFF
+        elif self._scene and self._scene[0] == "identify":
+            for lid in LOCKER_IDS:
+                specs[lid] = (COLOR_WHITE, FX_SOLID) if lid in self._scene[1] else _OFF
         elif self._scene and self._scene[0] == "error":
             for lid in LOCKER_IDS:
                 specs[lid] = (COLOR_RED, FX_BLINK)
@@ -215,8 +246,10 @@ class LedController:
                 ) as resp:
                     resp.raise_for_status()
                 self._sent = payload
+                self.last_ok, self.last_error = dt_util.utcnow().isoformat(), None
             except (aiohttp.ClientError, asyncio.TimeoutError) as err:
                 self._sent = None
+                self.last_error = str(err) or "délai dépassé"
                 _LOGGER.warning("Envoi WLED %s echoue : %s", host, err)
 
 
@@ -225,6 +258,7 @@ class LedController:
 def async_setup_leds_ws(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_list_devices)
     websocket_api.async_register_command(hass, ws_test)
+    websocket_api.async_register_command(hass, ws_identify)
 
 
 @websocket_api.websocket_command({
@@ -244,6 +278,17 @@ def ws_list_devices(hass: HomeAssistant, connection: websocket_api.ActiveConnect
 })
 @callback
 def ws_test(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict) -> None:
-    """Simule une activite devant le meuble (allume l'eclairage)."""
-    hass.data[DOMAIN]["leds"].activity()
+    """Simule une activite devant le meuble (allume l'eclairage, force un envoi)."""
+    hass.data[DOMAIN]["leds"].test()
+    connection.send_result(msg["id"], {"success": True})
+
+
+@websocket_api.websocket_command({
+    vol.Required("type"): WS_LEDS_IDENTIFY,
+    vol.Required("locker_id"): vol.All(vol.Coerce(int), vol.In(LOCKER_IDS)),
+})
+@callback
+def ws_identify(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict) -> None:
+    """Allume un seul casier en blanc (parcours de diagnostic)."""
+    hass.data[DOMAIN]["leds"].show_identify(msg["locker_id"])
     connection.send_result(msg["id"], {"success": True})

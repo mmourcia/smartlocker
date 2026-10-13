@@ -130,6 +130,8 @@ async def ws_get_settings(hass: HomeAssistant, connection: websocket_api.ActiveC
     vol.Optional("notification_title"): vol.All(str, vol.Length(min=1)),
     vol.Optional("msg_text"):           vol.All(str, vol.Length(min=1)),
     vol.Optional("msg_email_html"):     vol.All(str, vol.Length(min=1)),
+    vol.Optional("relay_device_id"):    str,
+    vol.Optional("keypad_device_id"):   str,
     vol.Optional("led_entry_id"):       str,
     vol.Optional("led_brightness"):     vol.All(vol.Coerce(int), vol.Range(min=1, max=255)),
     vol.Optional("led_timeout"):        vol.All(vol.Coerce(int), vol.Range(min=5, max=3600)),
@@ -147,5 +149,6 @@ async def ws_set_settings(hass: HomeAssistant, connection: websocket_api.ActiveC
         if key in msg:
             settings[key] = msg[key]
     await async_save(hass)
+    hass.data[DOMAIN]["hardware"].resolve()
     hass.data[DOMAIN]["leds"].settings_changed()
     connection.send_result(msg["id"], settings)

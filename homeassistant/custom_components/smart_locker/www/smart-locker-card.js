@@ -369,7 +369,7 @@ class SmartLockerCard extends HTMLElement {
     }
 
     // Etat physique de la porte
-    const doorEntity = this._hass.states[this._doorEntityId];
+    const doorEntity = this._hass.states[entity.attributes.door_entity || this._doorEntityId];
     const doorBadge = sr.getElementById('door-badge');
     if (doorEntity) {
       const isOpen = doorEntity.state === 'on';
@@ -1026,153 +1026,33 @@ window.customCards.push({
 
 // ─── Carte éclairage (contrôleur WLED) ───────────────────────────────────────
 
-const LED_LEGEND = [
-  ['#00FF00', 'Libre / récupéré',               false],
-  ['#004BFF', 'Colis en attente',               false],
-  ['#00FF00', 'Code correct : casier à ouvrir', true],
-  ['#FF0000', 'Code incorrect (3 s)',           true],
-  ['#FF6E00', 'Porte ouverte trop longtemps',   true],
-  ['#FF0000', 'Hors service',                   false],
-];
-
-const LCSS = RCSS + `
-  .field { min-width: 0; }
-  .field input, .field select { width: 100%; box-sizing: border-box; }
-  .field select {
-    padding: 6px 8px;
-    border: 1px solid var(--divider-color);
-    border-radius: 6px;
-    background: var(--card-background-color);
-    color: var(--primary-text-color);
-    font-size: 0.85em;
-  }
-  .field .hint { font-size: 0.7em; color: var(--secondary-text-color); }
-  .status { font-size: 0.78em; color: var(--secondary-text-color); margin-right: auto; align-self: center; }
-  .legend { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; font-size: 0.78em; margin-top: 12px; }
-  .legend span { display: flex; align-items: center; gap: 6px; }
-  .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-  .dot.blink { animation: sl-blink 1s steps(1) infinite; }
-  @keyframes sl-blink { 50% { opacity: 0.15; } }
-`;
-
+// Ancienne carte Éclairage : ses réglages sont dans la carte Matériel (v0.8.0). Conservée pour
+// que les tableaux de bord existants n'affichent pas d'erreur de configuration.
 class SmartLockerLedsCard extends HTMLElement {
   static getStubConfig() { return {}; }
-  constructor() {
-    super();
-    this.attachShadow({ mode: 'open' });
-    this._loaded = false;
-  }
-
-  setConfig(config) { this._config = config || {}; }
-
-  set hass(hass) {
-    this._hass = hass;
-    if (!this._loaded) { this._loaded = true; this._load(); }
-  }
-
-  async _load() {
-    let devices = [], settings = {};
-    try {
-      [devices, settings] = await Promise.all([
-        this._hass.callWS({ type: 'smart_locker/leds/devices' }),
-        this._hass.callWS({ type: 'smart_locker/settings/get' }),
-      ]);
-    } catch (err) { console.error('SmartLocker leds load:', err); }
-    this._render(devices, settings);
-  }
-
-  _render(devices, s) {
-    const known = devices.some(d => d.entry_id === s.led_entry_id);
-    const options = [
-      `<option value="" ${!s.led_entry_id ? 'selected' : ''}>— Aucun (LED désactivées) —</option>`,
-      ...devices.map(d =>
-        `<option value="${this._esc(d.entry_id)}" ${d.entry_id === s.led_entry_id ? 'selected' : ''}>
-          ${this._esc(d.title)}${d.host ? ` (${this._esc(d.host)})` : ''}</option>`),
-      ...(s.led_entry_id && !known
-        ? [`<option value="${this._esc(s.led_entry_id)}" selected>⚠ Appareil introuvable</option>`] : []),
-    ].join('');
-    const num = (id, label, value, min, max, hint) => `
-      <div class="field">
-        <label>${label}</label>
-        <input id="${id}" type="number" min="${min}" max="${max}" value="${this._esc(value)}">
-        <span class="hint">${hint}</span>
-      </div>`;
-
+  constructor() { super(); this.attachShadow({ mode: 'open' }); }
+  setConfig(config) {
+    this._config = config || {};
     this.shadowRoot.innerHTML = `
-      <style>${LCSS}</style>
+      <style>${RCSS}</style>
       <ha-card>
-        <div class="card-header">
-          <div class="card-title"><ha-icon icon="mdi:led-strip-variant"></ha-icon>Éclairage des casiers</div>
-          <button class="btn-add" id="btn-test" title="Allume l'éclairage comme si quelqu'un tapait sur le digicode">
-            <ha-icon icon="mdi:lightbulb-on-outline"></ha-icon>Tester
-          </button>
-        </div>
-        <div class="form">
-          <div class="form-grid">
-            <div class="field" style="grid-column: 1 / -1">
-              <label>Contrôleur WLED</label>
-              <select id="f-entry">${options}</select>
-              <span class="hint">${devices.length ? 'Appareils de l\'intégration WLED de Home Assistant'
-                : 'Aucun appareil WLED : ajouter l\'intégration WLED dans Paramètres › Appareils et services'}</span>
-            </div>
-            ${num('f-bri', 'Luminosité', s.led_brightness, 1, 255, '1 à 255')}
-            ${num('f-timeout', 'Durée d\'allumage (s)', s.led_timeout, 5, 3600, 'Après la dernière touche / porte')}
-            ${num('f-door', 'Alerte porte ouverte (s)', s.door_alert_delay, 5, 3600, 'Clignotement orange au-delà')}
-          </div>
-          <div class="form-actions">
-            <span class="status" id="status"></span>
-            <button class="r-btn r-btn-primary" id="f-save">Enregistrer</button>
-          </div>
-        </div>
-        <div class="legend">
-          ${LED_LEGEND.map(([c, l, b]) =>
-            `<span><i class="dot ${b ? 'blink' : ''}" style="background:${c}"></i>${l}</span>`).join('')}
-        </div>
-      </ha-card>
-    `;
-    const sr = this.shadowRoot;
-    sr.getElementById('f-save').onclick = () => this._save();
-    sr.getElementById('btn-test').onclick = async () => {
-      try {
-        await this._hass.callWS({ type: 'smart_locker/leds/test' });
-        this._status('Éclairage allumé');
-      } catch (err) { this._status(`Erreur : ${err.message || err}`); }
-    };
+        <div class="card-header"><div class="card-title">
+          <ha-icon icon="mdi:led-strip-variant"></ha-icon>Éclairage des casiers</div></div>
+        <p style="margin:0;font-size:0.88em">Les réglages et les tests de l'éclairage sont maintenant dans la
+          carte <b>Matériel</b> (<code>custom:smart-locker-hardware-card</code>). Cette carte peut être retirée
+          du tableau de bord.</p>
+      </ha-card>`;
   }
-
-  async _save() {
-    const sr = this.shadowRoot;
-    const int = id => parseInt(sr.getElementById(id).value, 10);
-    try {
-      await this._hass.callWS({
-        type: 'smart_locker/settings/set',
-        led_entry_id:     sr.getElementById('f-entry').value,
-        led_brightness:   int('f-bri'),
-        led_timeout:      int('f-timeout'),
-        door_alert_delay: int('f-door'),
-      });
-      this._status('Enregistré ✓');
-    } catch (err) { this._status(`Erreur : ${err.message || err}`); }
-  }
-
-  _status(text) {
-    const el = this.shadowRoot.getElementById('status');
-    if (el) el.textContent = text;
-  }
-
-  _esc(s) {
-    return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  }
-
-  getCardSize() { return 4; }
+  set hass(_hass) {}
+  getCardSize() { return 2; }
 }
 
 customElements.define('smart-locker-leds-card', SmartLockerLedsCard);
 
 window.customCards.push({
   type:        'smart-locker-leds-card',
-  name:        'Smart Locker — Éclairage',
-  description: 'Choix du contrôleur WLED et réglages de l\'éclairage des casiers',
+  name:        'Smart Locker — Éclairage (obsolète)',
+  description: 'Remplacée par la carte Matériel',
   preview:     false,
 });
 
@@ -1505,7 +1385,11 @@ class SmartLockerLockersCard extends HTMLElement {
     this._render();
   }
 
-  _door(i) { return `binary_sensor.smart_locker_relais_porte_casier_${i}`; }
+  // Capteur de porte résolu par le composant (carte Matériel), ancien nom fixe à défaut
+  _door(i) {
+    const e = this._hass && this._hass.states[`smart_locker.casier_${i}`];
+    return (e && e.attributes.door_entity) || `binary_sensor.smart_locker_relais_porte_casier_${i}`;
+  }
 
   _locker(i) {
     const e = this._hass.states[`smart_locker.casier_${i}`];
@@ -1683,5 +1567,415 @@ window.customCards.push({
   type:        'smart-locker-lockers-card',
   name:        'Smart Locker — Casiers',
   description: 'Vue d\'ensemble de tous les casiers, détail et actions au toucher',
+  preview:     false,
+});
+
+// ─── Carte matériel : choix, état et test de chaque équipement ───────────────
+
+const HCSS = RCSS + `
+  .sec { border: 1px solid var(--divider-color); border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; }
+  .sec-h { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .sec-h ha-icon { --mdc-icon-size: 20px; color: var(--primary-color); }
+  .sec-h .t { font-weight: 600; flex: 1; }
+  .pill { font-size: 0.72em; font-weight: 600; padding: 2px 8px; border-radius: 10px; white-space: nowrap;
+          background: var(--secondary-background-color); color: var(--secondary-text-color); }
+  .pill.on { background: #43A04722; color: #2E7D32; }
+  .pill.off { background: #E5393522; color: #C62828; }
+  .field { min-width: 0; margin-bottom: 8px; display: flex; flex-direction: column; gap: 3px; }
+  .field label { font-size: 0.75em; color: var(--secondary-text-color); font-weight: 500; }
+  .field select, .field input {
+    width: 100%; box-sizing: border-box; padding: 7px 8px; border-radius: 6px; font-size: 0.88em;
+    border: 1px solid var(--divider-color); background: var(--card-background-color); color: var(--primary-text-color);
+  }
+  .hint { font-size: 0.72em; color: var(--secondary-text-color); }
+  .hint.warn { color: #E65100; }
+  .nums { display: grid; grid-template-columns: repeat(auto-fit, minmax(95px, 1fr)); gap: 8px; }
+  .row-btns { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+  .r-btn ha-icon { --mdc-icon-size: 16px; color: inherit; vertical-align: -3px; margin-right: 3px; }
+  .links { display: flex; flex-direction: column; margin-top: 6px; }
+  .link { display: grid; grid-template-columns: 2.6em 1fr 1fr 34px; gap: 6px; align-items: center;
+          padding: 5px 0; border-bottom: 1px solid var(--divider-color); font-size: 0.8em; }
+  .link:last-child { border-bottom: none; }
+  .link.head { font-weight: 600; color: var(--secondary-text-color); font-size: 0.72em; }
+  .link .c { font-weight: 700; }
+  .ok, .ko { display: flex; flex-direction: column; min-width: 0; }
+  .ok b { color: #2E7D32; } .ko b { color: #C62828; }
+  .ok small, .ko small { color: var(--secondary-text-color); overflow: hidden; text-overflow: ellipsis;
+                         white-space: nowrap; font-family: monospace; font-size: 0.85em; }
+  .test-res { grid-column: 1 / -1; font-size: 0.85em; padding: 2px 0 2px 2.9em; }
+  .test-res.ok { color: #2E7D32; } .test-res.ko { color: #C62828; } .test-res.wait { color: var(--secondary-text-color); }
+  .log { margin-top: 8px; border-radius: 8px; background: var(--secondary-background-color); padding: 8px 10px; }
+  .log-h { display: flex; align-items: center; gap: 8px; font-size: 0.8em; font-weight: 600; margin-bottom: 4px; }
+  .log-h span { flex: 1; }
+  .log ul { list-style: none; margin: 0; padding: 0; font-size: 0.85em; }
+  .log li { padding: 3px 0; border-top: 1px solid var(--divider-color); }
+  .log li:first-child { border-top: none; }
+  .log .tm { color: var(--secondary-text-color); font-family: monospace; font-size: 0.85em; margin-right: 6px; }
+  .log .other { color: #E65100; font-size: 0.85em; }
+  .log .empty { color: var(--secondary-text-color); font-style: italic; }
+  .save { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
+  .status { font-size: 0.78em; color: var(--secondary-text-color); margin-right: auto; }
+  .status.err { color: #C62828; }
+`;
+
+const DOOR_TEST_SECONDS = 10;
+
+class SmartLockerHardwareCard extends HTMLElement {
+  static getStubConfig() { return {}; }
+  constructor() {
+    super();
+    this.attachShadow({ mode: 'open' });
+    this._data = null;
+    this._sig = '';
+    this._doorTests = {};   // locker -> {state: wait|ok|ko|info, text, timer}
+    this._log = null;       // null = mode test inactif
+  }
+
+  setConfig(config) { this._config = config || {}; }
+
+  set hass(hass) {
+    this._hass = hass;
+    if (!this._loaded) { this._loaded = true; this._load(); return; }
+    if (!this._data) return;
+    const sig = Object.values(this._data.relay.lockers)
+      .map(l => (l.door && hass.states[l.door] ? hass.states[l.door].state : '')).join(',');
+    if (sig !== this._sig) { this._sig = sig; this._checkDoorTests(); this._renderLinks(); }
+  }
+
+  async _load(keepStatus) {
+    try {
+      const [data, settings] = await Promise.all([
+        this._hass.callWS({ type: 'smart_locker/hardware/status' }),
+        this._hass.callWS({ type: 'smart_locker/settings/get' }),
+      ]);
+      this._data = data;
+      this._settings = settings;
+    } catch (err) {
+      this.shadowRoot.innerHTML = `<style>${HCSS}</style><ha-card><p class="status err">Erreur : ${this._esc(err.message || err)}</p></ha-card>`;
+      return;
+    }
+    const status = keepStatus && this.shadowRoot.getElementById('status');
+    const prev = status ? [status.textContent, status.className] : null;
+    this._render();
+    if (prev) { const st = this.shadowRoot.getElementById('status'); [st.textContent, st.className] = prev; }
+  }
+
+  // ── Rendu ──────────────────────────────────────────────────────────────
+
+  _pill(online, labels = ['En ligne', 'Hors ligne', 'Inconnu']) {
+    return online === true ? `<span class="pill on">● ${labels[0]}</span>`
+      : online === false ? `<span class="pill off">● ${labels[1]}</span>`
+      : `<span class="pill">● ${labels[2]}</span>`;
+  }
+
+  _devOptions(selected, emptyLabel) {
+    const d = this._data;
+    return [
+      `<option value="">${emptyLabel}</option>`,
+      ...d.esphome.map(e => `<option value="${this._esc(e.device_id)}" ${e.device_id === selected ? 'selected' : ''}>
+        ${this._esc(e.name)}${e.model ? ` · ${this._esc(e.model)}` : ''}</option>`),
+      ...(selected && !d.esphome.some(e => e.device_id === selected)
+        ? [`<option value="${this._esc(selected)}" selected>⚠ Appareil introuvable</option>`] : []),
+    ].join('');
+  }
+
+  _render() {
+    const d = this._data, s = this._settings;
+    const relayName = (d.esphome.find(e => e.device_id === d.relay.device_id) || {}).name;
+    const relayHint = {
+      selected: ['', 'Appareil choisi.'],
+      auto: ['', `Détectée automatiquement : ${relayName || '?'}.`],
+      legacy: ['', 'Anciens noms d\'entités (button.smart_locker_relais_…). Choisir l\'appareil est plus sûr.'],
+      none: ['warn', 'Aucune carte relais trouvée : vérifier l\'intégration ESPHome.'],
+    }[d.relay.source] || ['', ''];
+    const wledOptions = [
+      `<option value="">Aucun (LED désactivées)</option>`,
+      ...d.wled.map(w => `<option value="${this._esc(w.entry_id)}" ${w.entry_id === s.led_entry_id ? 'selected' : ''}>
+        ${this._esc(w.title)}${w.host ? ` (${this._esc(w.host)})` : ''}</option>`),
+      ...(s.led_entry_id && !d.wled.some(w => w.entry_id === s.led_entry_id)
+        ? [`<option value="${this._esc(s.led_entry_id)}" selected>⚠ Appareil introuvable</option>`] : []),
+    ].join('');
+    const l = d.leds;
+    const ledOnline = !l.configured ? null : l.last_error ? false : l.last_ok ? true : null;
+    const ledHint = !l.configured ? ['warn', 'Aucun contrôleur : les LED sont désactivées.']
+      : l.last_error ? ['warn', `Dernier envoi en échec : ${l.last_error}`]
+      : l.last_ok ? ['', `Dernier envoi réussi à ${new Date(l.last_ok).toLocaleTimeString()}.`]
+      : ['', 'Pas encore d\'envoi depuis le démarrage : cliquer Tester.'];
+    const num = (id, label, value, min, max) => `
+      <div class="field"><label>${label}</label>
+        <input id="${id}" type="number" min="${min}" max="${max}" value="${this._esc(value)}"></div>`;
+
+    this.shadowRoot.innerHTML = `
+      <style>${HCSS}</style>
+      <ha-card>
+        <div class="card-header">
+          <div class="card-title"><ha-icon icon="mdi:chip"></ha-icon>Matériel</div>
+          <button class="r-icon-btn" id="b-reload" title="Actualiser"><ha-icon icon="mdi:refresh"></ha-icon></button>
+        </div>
+
+        <div class="sec">
+          <div class="sec-h"><ha-icon icon="mdi:electric-switch"></ha-icon><span class="t">Carte relais</span>
+            ${this._pill(d.relay.online)}</div>
+          <div class="field"><label>Appareil (serrures et portes)</label>
+            <select id="f-relay">${this._devOptions(s.relay_device_id, 'Détection automatique')}</select>
+            <span class="hint ${relayHint[0]}">${this._esc(relayHint[1])}</span></div>
+          <div class="links" id="links"></div>
+          <span class="hint">Test : actionne la serrure et vérifie que le capteur voit la porte s'ouvrir.</span>
+        </div>
+
+        <div class="sec">
+          <div class="sec-h"><ha-icon icon="mdi:dialpad"></ha-icon><span class="t">Digicode</span>
+            ${this._pill(d.keypad.online, ['En ligne', 'Hors ligne', 'Non choisi'])}</div>
+          <div class="field"><label>Appareil</label>
+            <select id="f-keypad">${this._devOptions(s.keypad_device_id, 'Tous les appareils ESPHome (non filtré)')}</select>
+            <span class="hint">Une fois choisi, seuls ses codes et badges sont pris en compte.</span></div>
+          <div class="row-btns"><button class="r-btn r-btn-secondary" id="b-kt">
+            <ha-icon icon="mdi:test-tube"></ha-icon>Mode test</button></div>
+          <div id="kt"></div>
+        </div>
+
+        <div class="sec">
+          <div class="sec-h"><ha-icon icon="mdi:led-strip-variant"></ha-icon><span class="t">Éclairage</span>
+            ${this._pill(ledOnline, ['Joignable', 'Injoignable', l.configured ? 'Non testé' : 'Désactivé'])}</div>
+          <div class="field"><label>Contrôleur WLED</label><select id="f-wled">${wledOptions}</select>
+            <span class="hint ${ledHint[0]}">${this._esc(ledHint[1])}</span></div>
+          <div class="nums">
+            ${num('f-bri', 'Luminosité', s.led_brightness, 1, 255)}
+            ${num('f-timeout', 'Allumage (s)', s.led_timeout, 5, 3600)}
+            ${num('f-door', 'Alerte porte (s)', s.door_alert_delay, 5, 3600)}
+          </div>
+          <div class="row-btns">
+            <button class="r-btn r-btn-secondary" id="b-led-test"><ha-icon icon="mdi:lightbulb-on-outline"></ha-icon>Tester</button>
+            <button class="r-btn r-btn-secondary" id="b-led-tour"><ha-icon icon="mdi:numeric"></ha-icon>Parcours</button>
+            <span class="hint" id="tour"></span>
+          </div>
+        </div>
+
+        <div class="save">
+          <span class="status" id="status"></span>
+          <button class="r-btn r-btn-primary" id="b-save">Enregistrer</button>
+        </div>
+      </ha-card>`;
+    const sr = this.shadowRoot;
+    sr.getElementById('b-save').onclick = () => this._save();
+    sr.getElementById('b-reload').onclick = () => this._load();
+    sr.getElementById('b-kt').onclick = () => (this._log ? this._stopKeypadTest() : this._startKeypadTest());
+    sr.getElementById('b-led-test').onclick = () => this._ledTest();
+    sr.getElementById('b-led-tour').onclick = () => (this._tour ? this._stopTour() : this._ledTour());
+    this._renderLinks();
+    this._renderKeypadTest();
+  }
+
+  _renderLinks() {
+    const box = this.shadowRoot.getElementById('links');
+    if (!box || !this._data) return;
+    const cell = (entity, okLabel) => entity
+      ? `<span class="ok"><b>✓ ${okLabel}</b><small title="${this._esc(entity)}">${this._esc(entity)}</small></span>`
+      : `<span class="ko"><b>✗ Introuvable</b><small>—</small></span>`;
+    const doorLabel = entity => {
+      const st = entity && this._hass.states[entity];
+      return !st ? 'OK' : st.state === 'on' ? 'Ouverte' : st.state === 'off' ? 'Fermée' : st.state;
+    };
+    box.innerHTML = `<div class="link head"><span>Casier</span><span>Ouverture</span><span>Porte</span><span></span></div>`
+      + Object.entries(this._data.relay.lockers).map(([id, l]) => {
+        const t = this._doorTests[id];
+        return `<div class="link"><span class="c">${this._esc(id)}</span>
+          ${cell(l.button, 'OK')}${cell(l.door, doorLabel(l.door))}
+          <button class="r-icon-btn" data-test="${this._esc(id)}" title="Tester le casier ${this._esc(id)}"
+            ${l.button ? '' : 'disabled'}><ha-icon icon="mdi:play-circle-outline"></ha-icon></button>
+          ${t ? `<span class="test-res ${t.state}">${this._esc(t.text)}</span>` : ''}</div>`;
+      }).join('');
+    box.querySelectorAll('[data-test]').forEach(b => b.onclick = () => this._testLocker(b.dataset.test));
+  }
+
+  // ── Test d'un casier : serrure + capteur de porte ──────────────────────
+
+  async _testLocker(id) {
+    const l = this._data.relay.lockers[id];
+    if (!confirm(`Tester le casier ${id} ?\nLa serrure va s'ouvrir.`)) return;
+    const door = l.door && this._hass.states[l.door];
+    if (door && door.state === 'on') {
+      this._setTest(id, 'ko', 'Porte déjà ouverte : la refermer puis relancer le test.');
+      return;
+    }
+    try {
+      await this._hass.callService('smart_locker', 'open', { locker_id: Number(id) });
+    } catch (err) {
+      this._setTest(id, 'ko', `Échec : ${err.message || err}`);
+      return;
+    }
+    if (!l.door) { this._setTest(id, 'info', 'Serrure actionnée. Pas de capteur de porte à vérifier.'); return; }
+    this._setTest(id, 'wait', `Serrure actionnée, attente de l'ouverture de la porte (${DOOR_TEST_SECONDS} s)…`);
+    this._doorTests[id].timer = setTimeout(() => {
+      if (this._doorTests[id] && this._doorTests[id].state === 'wait')
+        this._setTest(id, 'ko', 'Porte non détectée : serrure bloquée, relais, ou capteur de porte (aimant, câblage).');
+    }, DOOR_TEST_SECONDS * 1000);
+  }
+
+  _setTest(id, state, text) {
+    const prev = this._doorTests[id];
+    if (prev && prev.timer && state !== 'wait') clearTimeout(prev.timer);
+    this._doorTests[id] = { state, text };
+    this._renderLinks();
+  }
+
+  _checkDoorTests() {
+    for (const [id, t] of Object.entries(this._doorTests)) {
+      const door = this._data.relay.lockers[id].door;
+      if (t.state === 'wait' && door && this._hass.states[door] && this._hass.states[door].state === 'on')
+        this._setTest(id, 'ok', '✓ Serrure et capteur OK : porte vue ouverte.');
+    }
+  }
+
+  // ── Mode test du digicode ──────────────────────────────────────────────
+
+  async _startKeypadTest() {
+    this._log = [];
+    try {
+      this._ktUnsub = await this._hass.connection.subscribeMessage(
+        ev => this._onKeypadEvent(ev), { type: 'smart_locker/hardware/keypad_test' });
+    } catch (err) {
+      this._log = null;
+      this._status(`Mode test impossible : ${err.message || err}`, true);
+    }
+    this._renderKeypadTest();
+  }
+
+  async _stopKeypadTest() {
+    clearInterval(this._ktTimer);
+    const unsub = this._ktUnsub;
+    this._ktUnsub = null;
+    this._log = null;
+    if (unsub) { try { await unsub(); } catch (_) { /* connexion fermée */ } }
+    this._renderKeypadTest();
+  }
+
+  _onKeypadEvent(ev) {
+    if (ev.type === 'start') {
+      this._ktLeft = ev.timeout;
+      clearInterval(this._ktTimer);
+      this._ktTimer = setInterval(() => { this._ktLeft = Math.max(0, this._ktLeft - 1); this._renderKeypadTest(); }, 1000);
+    } else if (ev.type === 'end') {
+      this._stopKeypadTest();
+      return;
+    } else if (ev.type === 'key' && this._log[0] && this._log[0].type === 'key') {
+      this._log[0].count += 1;          // touches successives regroupées
+      this._log[0].time = new Date();
+    } else {
+      this._log.unshift({ ...ev, count: 1, time: new Date() });
+      this._log = this._log.slice(0, 12);
+    }
+    this._renderKeypadTest();
+  }
+
+  _describe(e) {
+    const where = ids => ids && ids.length ? `→ casier${ids.length > 1 ? 's' : ''} ${ids.join(', ')}` : '';
+    switch (e.type) {
+      case 'key': return `${'•'.repeat(Math.min(e.count, 6))} ${e.count} touche${e.count > 1 ? 's' : ''}`;
+      case 'code': return `Code <b>${this._esc(e.code)}</b> ${e.lockers.length ? this._esc(where(e.lockers)) : '→ aucun casier (serait refusé)'}`;
+      case 'badge': return `Badge <b>${this._esc(e.badge_id)}</b> → ${e.recipient
+        ? `${this._esc(e.recipient)}${e.lockers.length ? `, ${this._esc(where(e.lockers).slice(2))}` : ', aucun colis'}`
+        : 'inconnu (serait refusé)'}`;
+      case 'timeout': return 'Saisie abandonnée (10 s sans touche)';
+      default: return this._esc(e.type);
+    }
+  }
+
+  _renderKeypadTest() {
+    const box = this.shadowRoot.getElementById('kt');
+    const btn = this.shadowRoot.getElementById('b-kt');
+    if (!box) return;
+    if (btn) btn.innerHTML = this._log
+      ? '<ha-icon icon="mdi:stop-circle-outline"></ha-icon>Arrêter le test'
+      : '<ha-icon icon="mdi:test-tube"></ha-icon>Mode test';
+    if (!this._log) { box.innerHTML = ''; return; }
+    box.innerHTML = `
+      <div class="log">
+        <div class="log-h"><span>Tapez un code ou passez un badge : rien ne s'ouvre pendant le test.</span>
+          <span style="flex:0;white-space:nowrap">${this._ktLeft ?? ''}${this._ktLeft !== undefined ? ' s' : ''}</span></div>
+        <ul>${this._log.length ? this._log.map(e => `
+          <li><span class="tm">${e.time.toLocaleTimeString()}</span>${this._describe(e)}
+            ${e.accepted ? '' : `<div class="other">Autre appareil (${this._esc(e.device)}) : ignoré en fonctionnement normal</div>`}</li>`).join('')
+          : '<li class="empty">En attente…</li>'}</ul>
+      </div>`;
+  }
+
+  // ── Diagnostic de l'éclairage ──────────────────────────────────────────
+
+  async _ledTest() {
+    try {
+      await this._hass.callWS({ type: 'smart_locker/leds/test' });
+      this._status('Éclairage allumé, vérification de la réponse du WLED…');
+      setTimeout(() => this._load(true), 1500);
+    } catch (err) { this._status(`Erreur : ${err.message || err}`, true); }
+  }
+
+  async _ledTour() {
+    const ids = Object.keys(this._data.relay.lockers).map(Number);
+    const tour = this._tour = { stop: false };
+    const label = this.shadowRoot.getElementById('tour');
+    const btn = this.shadowRoot.getElementById('b-led-tour');
+    btn.innerHTML = '<ha-icon icon="mdi:stop-circle-outline"></ha-icon>Arrêter';
+    for (const id of ids) {
+      if (tour.stop) break;
+      label.textContent = `Casier ${id} allumé en blanc`;
+      try { await this._hass.callWS({ type: 'smart_locker/leds/identify', locker_id: id }); }
+      catch (err) { label.textContent = `Erreur : ${err.message || err}`; break; }
+      await new Promise(r => setTimeout(r, 2200));
+    }
+    if (this._tour === tour) this._stopTour();
+  }
+
+  _stopTour() {
+    if (this._tour) this._tour.stop = true;
+    this._tour = null;
+    const label = this.shadowRoot.getElementById('tour');
+    const btn = this.shadowRoot.getElementById('b-led-tour');
+    if (label) label.textContent = '';
+    if (btn) btn.innerHTML = '<ha-icon icon="mdi:numeric"></ha-icon>Parcours';
+  }
+
+  // ── Enregistrement ─────────────────────────────────────────────────────
+
+  async _save() {
+    const sr = this.shadowRoot;
+    const int = id => parseInt(sr.getElementById(id).value, 10);
+    try {
+      await this._hass.callWS({
+        type: 'smart_locker/settings/set',
+        relay_device_id:  sr.getElementById('f-relay').value,
+        keypad_device_id: sr.getElementById('f-keypad').value,
+        led_entry_id:     sr.getElementById('f-wled').value,
+        led_brightness:   int('f-bri'),
+        led_timeout:      int('f-timeout'),
+        door_alert_delay: int('f-door'),
+      });
+      this._status('Enregistré ✓');
+      await this._load(true);
+    } catch (err) { this._status(`Erreur : ${err.message || err}`, true); }
+  }
+
+  _status(text, error = false) {
+    const el = this.shadowRoot.getElementById('status');
+    if (!el) return;
+    el.textContent = text;
+    el.className = `status${error ? ' err' : ''}`;
+  }
+
+  disconnectedCallback() { this._stopKeypadTest(); this._stopTour(); }
+
+  _esc(s) {
+    return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  getCardSize() { return 10; }
+}
+
+customElements.define('smart-locker-hardware-card', SmartLockerHardwareCard);
+
+window.customCards.push({
+  type:        'smart-locker-hardware-card',
+  name:        'Smart Locker — Matériel',
+  description: 'Carte relais, digicode et éclairage : choix, état et tests',
   preview:     false,
 });
