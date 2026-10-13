@@ -58,6 +58,8 @@ WS_RECIPIENTS_LIST   = "smart_locker/recipients/list"
 WS_RECIPIENTS_ADD    = "smart_locker/recipients/add"
 WS_RECIPIENTS_UPDATE = "smart_locker/recipients/update"
 WS_RECIPIENTS_DELETE = "smart_locker/recipients/delete"
+WS_RECIPIENTS_SUBSCRIBE = "smart_locker/recipients/subscribe"
+SIGNAL_RECIPIENTS = "smart_locker_recipients_updated"
 
 # Commandes WebSocket paramètres
 WS_SETTINGS_GET = "smart_locker/settings/get"

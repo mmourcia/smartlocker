@@ -590,3 +590,31 @@ async def test_channels_builtin(hass, hass_ws_client, aioclient_mock, setup):
     assert r["error"]["code"] == "send_failed" and "Crédit insuffisant" in r["error"]["message"]
     await ws.send_json({"id": 7, "type": "smart_locker/channels/get"})
     assert (await asyncio.wait_for(ws.receive_json(), 2))["result"]["sms"]["last"]["error"] == "Crédit insuffisant"
+
+
+async def test_recipients_subscription(hass, hass_ws_client, setup):
+    """Les cartes abonnees recoivent la liste a jour a chaque modification (sans F5)."""
+    ws = await hass_ws_client(hass)
+    other = await hass_ws_client(hass)   # deuxieme navigateur / appareil
+    await ws.send_json({"id": 1, "type": "smart_locker/recipients/subscribe"})
+    assert (await asyncio.wait_for(ws.receive_json(), 2))["success"]
+    first = (await asyncio.wait_for(ws.receive_json(), 2))["event"]
+    assert [r["id"] for r in first] == ["r-jean"]
+
+    await other.send_json({"id": 1, "type": "smart_locker/recipients/add", "first_name": "Zoé", "last_name": "Petit"})
+    zoe = (await asyncio.wait_for(other.receive_json(), 2))["result"]
+    pushed = (await asyncio.wait_for(ws.receive_json(), 2))["event"]
+    assert {r["first_name"] for r in pushed} == {"Jean", "Zoé"}
+
+    await other.send_json({"id": 2, "type": "smart_locker/recipients/delete", "recipient_id": zoe["id"]})
+    await asyncio.wait_for(other.receive_json(), 2)
+    assert [r["id"] for r in (await asyncio.wait_for(ws.receive_json(), 2))["event"]] == ["r-jean"]
+
+    # Desabonnement : plus rien n'est envoye
+    await ws.send_json({"id": 2, "type": "unsubscribe_events", "subscription": 1})
+    assert (await asyncio.wait_for(ws.receive_json(), 2))["success"]
+    await other.send_json({"id": 3, "type": "smart_locker/recipients/add", "first_name": "Léa", "last_name": "Roy"})
+    await asyncio.wait_for(other.receive_json(), 2)
+    # (horloge figee dans les tests : on verifie par un ping que rien d'autre n'arrive avant le pong)
+    await ws.send_json({"id": 3, "type": "ping"})
+    assert (await asyncio.wait_for(ws.receive_json(), 2))["type"] == "pong"

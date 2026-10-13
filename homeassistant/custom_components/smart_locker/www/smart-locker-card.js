@@ -1,3 +1,23 @@
+// Liste des destinataires mise à jour en direct (smart_locker/recipients/subscribe) :
+// un destinataire ajouté apparaît aussitôt dans toutes les cartes ouvertes, sans F5.
+function byName(list) {
+  return [...list].sort((a, b) =>
+    `${a.last_name} ${a.first_name}`.localeCompare(`${b.last_name} ${b.first_name}`));
+}
+
+function watchRecipients(card, onList) {
+  if (card._recipUnsub || !card._hass || !card.isConnected) return;
+  card._recipUnsub = card._hass.connection
+    .subscribeMessage(list => onList(list), { type: 'smart_locker/recipients/subscribe' })
+    .catch(err => { console.error('SmartLocker recipients subscribe:', err); card._recipUnsub = null; });
+}
+
+function unwatchRecipients(card) {
+  const pending = card._recipUnsub;
+  card._recipUnsub = null;
+  if (pending) pending.then(unsub => unsub && unsub()).catch(() => {});
+}
+
 const LOCKER_STATES = {
   libre:         { color: '#4CAF50', icon: 'mdi:lock-open-variant', label: 'Libre' },
   'occupé':      { color: '#2196F3', icon: 'mdi:lock',               label: 'Occupé' },
@@ -215,7 +235,6 @@ class SmartLockerCard extends HTMLElement {
     super();
     this.attachShadow({ mode: 'open' });
     this._recipients = [];
-    this._recipientsFetched = false;
   }
 
   static getConfigElement() { return document.createElement('smart-locker-card-editor'); }
@@ -298,22 +317,16 @@ class SmartLockerCard extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
-    if (!this._recipientsFetched) {
-      this._recipientsFetched = true;
-      this._fetchRecipients();
-    }
+    this._watch();
     this._update();
   }
 
-  async _fetchRecipients() {
-    try {
-      const list = await this._hass.callWS({ type: 'smart_locker/recipients/list' });
-      this._recipients = list.sort((a, b) =>
-        `${a.last_name} ${a.first_name}`.localeCompare(`${b.last_name} ${b.first_name}`)
-      );
-      this._populateSelect();
-    } catch (_) {}
+  _watch() {
+    watchRecipients(this, list => { this._recipients = byName(list); this._populateSelect(); });
   }
+
+  connectedCallback() { this._watch(); }
+  disconnectedCallback() { unwatchRecipients(this); }
 
   _populateSelect() {
     const select = this.shadowRoot.getElementById('user-select');
@@ -737,9 +750,16 @@ class SmartLockerRecipientsCard extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
-    if (!this._loaded) { this._loaded = true; this._load(); }
+    this._watch();
   }
 
+  _watch() {
+    watchRecipients(this, list => { this._recipients = list; this._renderTable(); });
+  }
+
+  connectedCallback() { this._watch(); }
+
+  // Rechargement explicite (après enregistrement) ; la souscription suffit d'ordinaire
   async _load() {
     try {
       this._recipients = await this._hass.callWS({ type: 'smart_locker/recipients/list' });
@@ -917,7 +937,7 @@ class SmartLockerRecipientsCard extends HTMLElement {
     });
   }
 
-  disconnectedCallback() { this._stopEnroll(); }
+  disconnectedCallback() { this._stopEnroll(); unwatchRecipients(this); }
 
   _showForm(recipient) {
     const isNew = !recipient;
@@ -1519,7 +1539,7 @@ class SmartLockerLockersCard extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
-    if (!this._recipientsLoaded) { this._recipientsLoaded = true; this._loadRecipients(); }
+    this._watch();
     // Ne redessiner que si un casier ou une porte a changé (préserve la saisie en cours)
     const sig = this._ids.map(i => {
       const l = hass.states[`smart_locker.casier_${i}`], d = hass.states[this._door(i)];
@@ -1528,14 +1548,12 @@ class SmartLockerLockersCard extends HTMLElement {
     if (sig !== this._sig) { this._sig = sig; this._render(); }
   }
 
-  async _loadRecipients() {
-    try {
-      const list = await this._hass.callWS({ type: 'smart_locker/recipients/list' });
-      this._recipients = list.sort((a, b) =>
-        `${a.last_name} ${a.first_name}`.localeCompare(`${b.last_name} ${b.first_name}`));
-    } catch (_) { this._recipients = []; }
-    this._render();
+  _watch() {
+    watchRecipients(this, list => { this._recipients = byName(list); this._render(); });
   }
+
+  connectedCallback() { this._watch(); }
+  disconnectedCallback() { unwatchRecipients(this); }
 
   // Capteur de porte résolu par le composant (carte Matériel), ancien nom fixe à défaut
   _door(i) {
