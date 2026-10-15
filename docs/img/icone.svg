@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Meuble Kallax 4x2 debout : 7 casiers + case technique, un casier "colis pret" -->
+  <rect x="56" y="8" width="400" height="496" rx="44" fill="#1565C0"/>
+  <g fill="#E3F2FD">
+    <rect x="88"  y="40"  width="160" height="98" rx="14"/>
+    <rect x="264" y="40"  width="160" height="98" rx="14"/>
+    <rect x="264" y="154" width="160" height="98" rx="14"/>
+    <rect x="88"  y="268" width="160" height="98" rx="14"/>
+    <rect x="264" y="268" width="160" height="98" rx="14"/>
+    <rect x="88"  y="382" width="160" height="90" rx="14"/>
+    <rect x="264" y="382" width="160" height="90" rx="14"/>
+  </g>
+  <!-- case 3 : compartiment technique -->
+  <rect x="88" y="154" width="160" height="98" rx="14" fill="#0D47A1"/>
+  <!-- casier "colis pret" : vert, avec serrure -->
+  <rect x="264" y="40" width="160" height="98" rx="14" fill="#43A047"/>
+  <g fill="#FFFFFF">
+    <circle cx="344" cy="80" r="15"/>
+    <rect x="337" y="86" width="14" height="28" rx="4"/>
+  </g>
+  <!-- poignees -->
+  <g fill="#1565C0">
+    <rect x="226" y="77"  width="10" height="24" rx="5"/>
+    <rect x="402" y="191" width="10" height="24" rx="5"/>
+    <rect x="226" y="305" width="10" height="24" rx="5"/>
+    <rect x="402" y="305" width="10" height="24" rx="5"/>
+    <rect x="226" y="415" width="10" height="24" rx="5"/>
+    <rect x="402" y="415" width="10" height="24" rx="5"/>
+  </g>
+</svg>
