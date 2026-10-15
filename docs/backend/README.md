@@ -5,7 +5,7 @@
 
 ## Où vit la logique
 
-Toute la logique métier est dans [`homeassistant/custom_components/smart_locker/`](../../homeassistant/custom_components/smart_locker/) :
+Toute la logique métier est dans [`custom_components/smart_locker/`](../../custom_components/smart_locker/) :
 
 | Fichier | Rôle |
 |---|---|

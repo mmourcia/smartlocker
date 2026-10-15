@@ -69,8 +69,10 @@ Détails : [éclairage WLED](hardware/wled-gledopto.md).
 
 ## 5. Composant smart_locker
 
-1. Copier [`homeassistant/custom_components/smart_locker/`](../homeassistant/custom_components/smart_locker/)
-   dans `config/custom_components/smart_locker/`.
+1. Installer le composant par **HACS** : **⋮ › Dépôts personnalisés**, URL
+   `https://github.com/mmourcia/smartlocker`, type **Intégration**, puis **Télécharger** *Smart Locker*
+   (ou copier [`custom_components/smart_locker/`](../custom_components/smart_locker/) dans
+   `config/custom_components/smart_locker/`).
 2. Ajouter dans `configuration.yaml` :
    ```yaml
    smart_locker:
