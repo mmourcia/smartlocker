@@ -1,3 +1,5 @@
+<img src="custom_components/smart_locker/brand/icon@2x.png" width="96" align="right" alt="Icône Smart Locker">
+
 # Smart Locker - Casiers connectés pilotés par Home Assistant
 
 Une personne dépose un colis dans un casier libre, l'affecte à un destinataire via une interface mobile, et ce destinataire reçoit une notification puis récupère son colis en tapant son code personnel devant le meuble, ou en présentant son badge s'il en a un. Pas de clé, pas de badge obligatoire, pas d'attente.
@@ -93,6 +95,10 @@ HACS propose une mise à jour quand une **release GitHub** plus récente existe.
    ```
 3. Sur GitHub : **Releases › Draft a new release**, choisir le tag `v0.10.1`, décrire les changements,
    **Publish release**.
+
+L'icône de l'intégration est dans [`custom_components/smart_locker/brand/`](custom_components/smart_locker/brand/)
+(PNG 256 et 512 px, source : [`docs/img/icone.svg`](docs/img/icone.svg)). Home Assistant 2026.3+ l'affiche
+sans passer par le dépôt `home-assistant/brands`.
 
 Le numéro du tag doit correspondre à celui du manifest : c'est aussi lui qui force les navigateurs à
 recharger les cartes Lovelace.
