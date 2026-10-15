@@ -2,7 +2,23 @@
 
 ## Installation
 
-Copier le dossier [`homeassistant/custom_components/smart_locker/`](../../homeassistant/custom_components/smart_locker/) dans `config/custom_components/` de Home Assistant, puis redémarrer HA.
+### Par HACS (recommandé)
+
+1. **HACS › ⋮ › Dépôts personnalisés** : URL `https://github.com/mmourcia/smartlocker`, type
+   **Intégration**, **Ajouter**.
+2. Rechercher **Smart Locker** dans HACS, **Télécharger** (choisir la dernière version).
+3. Ajouter `smart_locker:` dans `configuration.yaml` (voir plus bas), puis redémarrer HA.
+
+Les nouvelles versions apparaissent ensuite dans **Paramètres › Mises à jour** : une sauvegarde,
+**Installer**, puis redémarrer HA.
+
+### Manuellement
+
+Copier le dossier [`custom_components/smart_locker/`](../../custom_components/smart_locker/) dans
+`config/custom_components/` de Home Assistant, puis redémarrer HA. Pour passer ensuite à HACS, il
+suffit d'installer par HACS : il remplace la copie manuelle, au même endroit.
+
+### Au démarrage
 
 Le composant enregistre automatiquement au démarrage :
 - les entités des 7 casiers utiles (`smart_locker.casier_N`, N = 1, 2, 4…8 — la case 3 est le compartiment technique)

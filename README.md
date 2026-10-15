@@ -46,7 +46,7 @@ Détails : [dashboard admin](docs/home-assistant/dashboard.md).
 
 | Répertoire | Contenu |
 |---|---|
-| [`homeassistant/custom_components/smart_locker/`](homeassistant/custom_components/smart_locker/) | Custom component HA + cartes Lovelace (`www/`) |
+| [`custom_components/smart_locker/`](custom_components/smart_locker/) | Custom component HA + cartes Lovelace (`www/`), installable par HACS |
 | [`esphome/`](esphome/) | Configurations ESPHome (carte relais, digicode) + modèle de `secrets.yaml` |
 | [`docs/`](docs/index.md) | Documentation matérielle et logicielle |
 | [`wled/`](wled/) | Sauvegarde de la configuration et des presets du contrôleur WLED |
@@ -78,6 +78,24 @@ Tests du custom component dans un Home Assistant de test (WLED simulé) :
 pip install -r requirements_test.txt
 pytest
 ```
+
+---
+
+## Publier une nouvelle version (HACS)
+
+HACS propose une mise à jour quand une **release GitHub** plus récente existe.
+
+1. Mettre à jour `version` dans [`custom_components/smart_locker/manifest.json`](custom_components/smart_locker/manifest.json)
+   (par exemple `0.10.0` → `0.10.1`), puis fusionner dans `main`.
+2. Créer et pousser le tag correspondant :
+   ```bash
+   git checkout main && git pull && git tag v0.10.1 && git push origin v0.10.1
+   ```
+3. Sur GitHub : **Releases › Draft a new release**, choisir le tag `v0.10.1`, décrire les changements,
+   **Publish release**.
+
+Le numéro du tag doit correspondre à celui du manifest : c'est aussi lui qui force les navigateurs à
+recharger les cartes Lovelace.
 
 ---
 
